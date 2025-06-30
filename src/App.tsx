@@ -41,6 +41,7 @@ import NewClient from './pages/NewClient';
 import EditClient from './pages/EditClient';
 import Integrations from './pages/Integrations';
 import { NewIntakeTest } from "./pages/NewIntakeTest";
+import PackageBuilderPage from './pages/PackageBuilderPage';
 import "./App.css";
 
 function App() {
@@ -177,6 +178,7 @@ function AppContent() {
                   <Route path="/integrations" element={<Integrations />} />
                   <Route path="/auth/callback" element={<HubSpotCallback />} />
                   <Route path="/new-intake-test" element={<NewIntakeTest />} />
+                  <Route path="/package-builder" element={<PackageBuilderPage />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
 
                 </Routes>

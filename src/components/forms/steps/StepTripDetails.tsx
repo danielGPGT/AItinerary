@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DayPicker } from 'react-day-picker';
 import { format, differenceInDays, addDays } from 'date-fns';
 import { 
@@ -91,6 +93,90 @@ const travelerPresets = [
   { label: 'Group', adults: 4, children: 0, icon: Group, color: 'bg-purple-100 text-purple-700' },
 ];
 
+// Traveler type options with radio button styling
+const travelerTypes = [
+  { 
+    value: 'solo', 
+    label: 'Solo Traveler', 
+    icon: User, 
+    description: 'Single adult traveler',
+    adults: 1,
+    children: 0,
+    color: 'bg-blue-500/10 text-blue-600 border-blue-200 hover:bg-blue-500/20',
+    selectedColor: 'bg-blue-500 text-white border-blue-500'
+  },
+  { 
+    value: 'couple', 
+    label: 'Couple', 
+    icon: Heart, 
+    description: 'Two adult travelers',
+    adults: 2,
+    children: 0,
+    color: 'bg-pink-500/10 text-pink-600 border-pink-200 hover:bg-pink-500/20',
+    selectedColor: 'bg-pink-500 text-white border-pink-500'
+  },
+  { 
+    value: 'family', 
+    label: 'Family', 
+    icon: Users, 
+    description: 'Adults with children',
+    adults: 2,
+    children: 2,
+    color: 'bg-green-500/10 text-green-600 border-green-200 hover:bg-green-500/20',
+    selectedColor: 'bg-green-500 text-white border-green-500'
+  },
+  { 
+    value: 'group', 
+    label: 'Group', 
+    icon: Group, 
+    description: 'Multiple travelers with subgroups',
+    adults: 4,
+    children: 0,
+    color: 'bg-purple-500/10 text-purple-600 border-purple-200 hover:bg-purple-500/20',
+    selectedColor: 'bg-purple-500 text-white border-purple-500'
+  },
+];
+
+// Advanced traveler configurations for each type
+const travelerConfigs = {
+  solo: {
+    minAdults: 1,
+    maxAdults: 1,
+    minChildren: 0,
+    maxChildren: 0,
+    allowSubgroups: false,
+    defaultAdults: 1,
+    defaultChildren: 0,
+  },
+  couple: {
+    minAdults: 2,
+    maxAdults: 2,
+    minChildren: 0,
+    maxChildren: 4,
+    allowSubgroups: false,
+    defaultAdults: 2,
+    defaultChildren: 0,
+  },
+  family: {
+    minAdults: 1,
+    maxAdults: 4,
+    minChildren: 1,
+    maxChildren: 6,
+    allowSubgroups: false,
+    defaultAdults: 2,
+    defaultChildren: 2,
+  },
+  group: {
+    minAdults: 3,
+    maxAdults: 20,
+    minChildren: 0,
+    maxChildren: 10,
+    allowSubgroups: true,
+    defaultAdults: 4,
+    defaultChildren: 0,
+  },
+};
+
 export function StepTripDetails({ disabled }: StepTripDetailsProps) {
   const form = useFormContext<NewIntake>();
   const { addGroup, updateGroup, removeGroup, duplicateGroup } = useNewIntakeStore();
@@ -107,6 +193,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
   
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [selectedTravelerType, setSelectedTravelerType] = useState<string>('solo');
   
   // Date selection state
   const [startDateOpen, setStartDateOpen] = useState(false);
@@ -125,6 +212,68 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
   const hasPrimaryDestination = form.watch('tripDetails.primaryDestination');
   const hasPurpose = form.watch('tripDetails.purpose');
 
+  // Determine current traveler type based on form values
+  useEffect(() => {
+    const adults = totalAdults;
+    const children = totalChildren;
+    
+    if (adults === 1 && children === 0) {
+      setSelectedTravelerType('solo');
+    } else if (adults === 2 && children === 0) {
+      setSelectedTravelerType('couple');
+    } else if (adults >= 1 && children >= 1) {
+      setSelectedTravelerType('family');
+    } else if (adults >= 3 || useSubgroups) {
+      setSelectedTravelerType('group');
+    }
+  }, [totalAdults, totalChildren, useSubgroups]);
+
+  // Handle traveler type selection
+  const handleTravelerTypeSelect = (type: string) => {
+    setSelectedTravelerType(type);
+    const config = travelerConfigs[type as keyof typeof travelerConfigs];
+    
+    // Set default values for the selected type
+    form.setValue('tripDetails.totalTravelers.adults', config.defaultAdults);
+    form.setValue('tripDetails.totalTravelers.children', config.defaultChildren);
+    
+    // Enable/disable subgroups based on type
+    if (config.allowSubgroups) {
+      form.setValue('tripDetails.useSubgroups', true);
+      // Auto-create initial groups for group type
+      if (type === 'group') {
+        const initialGroups: TravelerGroup[] = [
+          {
+            id: `group_${Date.now()}_1`,
+            name: 'Group 1',
+            adults: config.defaultAdults,
+            children: config.defaultChildren,
+            childAges: Array.from({ length: config.defaultChildren }, (_, i) => 10 + i),
+            travelerNames: [
+              ...Array.from({ length: config.defaultAdults }, (_, i) => ({
+                name: `Adult ${i + 1}`,
+                type: 'adult' as const,
+              })),
+              ...Array.from({ length: config.defaultChildren }, (_, i) => ({
+                name: `Child ${i + 1}`,
+                type: 'child' as const,
+                age: 10 + i,
+              })),
+            ],
+            notes: 'Initial travel group',
+          }
+        ];
+        form.setValue('tripDetails.groups', initialGroups);
+      }
+    } else {
+      form.setValue('tripDetails.useSubgroups', false);
+      // Clear existing groups if subgroups are not allowed
+      form.setValue('tripDetails.groups', []);
+    }
+    
+    toast.success(`Selected ${travelerTypes.find(t => t.value === type)?.label} configuration`);
+  };
+
   // Calculate duration when dates change - simplified
   useEffect(() => {
     if (startDate && endDate) {
@@ -139,45 +288,121 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
     }
   }, [startDate, endDate]);
 
+  // Group validation functions
+  const validateGroups = () => {
+    if (!useSubgroups) return true;
+    
+    const groups = form.watch('tripDetails.groups') || [];
+    const totalAdults = form.watch('tripDetails.totalTravelers.adults') || 0;
+    const totalChildren = form.watch('tripDetails.totalTravelers.children') || 0;
+    
+    // Check if groups exist
+    if (groups.length === 0) {
+      toast.error('Please create at least one travel group');
+      return false;
+    }
+    
+    // Calculate total travelers in groups
+    let groupAdults = 0;
+    let groupChildren = 0;
+    
+    groups.forEach(group => {
+      groupAdults += group.adults || 0;
+      groupChildren += group.children || 0;
+    });
+    
+    // Check if all travelers are assigned
+    if (groupAdults !== totalAdults) {
+      toast.error(`All adults must be assigned to groups. Found ${groupAdults}/${totalAdults} adults assigned.`);
+      return false;
+    }
+    
+    if (groupChildren !== totalChildren) {
+      toast.error(`All children must be assigned to groups. Found ${groupChildren}/${totalChildren} children assigned.`);
+      return false;
+    }
+    
+    // Check if each group has at least one traveler
+    const emptyGroups = groups.filter(group => (group.adults || 0) + (group.children || 0) === 0);
+    if (emptyGroups.length > 0) {
+      toast.error('All groups must have at least one traveler assigned');
+      return false;
+    }
+    
+    return true;
+  };
+
   // Check completion status
   const hasStartDate = startDate;
   const hasEndDate = endDate;
   const hasAdults = totalAdults;
+  const hasValidGroups = validateGroups();
 
-  const isComplete = hasPrimaryDestination && hasStartDate && hasEndDate && hasAdults && hasPurpose;
+  const isComplete = hasPrimaryDestination && hasStartDate && hasEndDate && hasAdults && hasPurpose && hasValidGroups;
 
-  // Simplified handlers
+  // Enhanced group management functions
   const handleAddGroup = () => {
+    const existingGroups = form.watch('tripDetails.groups') || [];
     const newGroup: TravelerGroup = {
       id: `group_${Date.now()}`,
-      name: `Group ${(groups?.length || 0) + 1}`,
-      adults: 1,
+      name: `Group ${existingGroups.length + 1}`,
+      adults: 0,
       children: 0,
       childAges: [],
       travelerNames: [],
       notes: '',
     };
 
-    addGroup(newGroup);
+    const updatedGroups = [...existingGroups, newGroup];
+    form.setValue('tripDetails.groups', updatedGroups);
     setShowGroupForm(true);
     setEditingGroupId(newGroup.id);
+    toast.success('New group created');
   };
 
   const handleUpdateGroup = (groupId: string, updates: Partial<TravelerGroup>) => {
-    updateGroup(groupId, updates);
+    const groups = form.watch('tripDetails.groups') || [];
+    const updatedGroups = groups.map(group => 
+      group.id === groupId ? { ...group, ...updates } : group
+    );
+    
+    form.setValue('tripDetails.groups', updatedGroups);
     setEditingGroupId(null);
     setShowGroupForm(false);
     toast.success('Group updated successfully');
   };
 
   const handleRemoveGroup = (groupId: string) => {
-    removeGroup(groupId);
+    const groups = form.watch('tripDetails.groups') || [];
+    const groupToRemove = groups.find(g => g.id === groupId);
+    
+    if (groupToRemove && (groupToRemove.adults || 0) + (groupToRemove.children || 0) > 0) {
+      const confirmed = window.confirm(
+        `Are you sure you want to remove "${groupToRemove.name}"? This will unassign ${groupToRemove.adults || 0} adults and ${groupToRemove.children || 0} children.`
+      );
+      if (!confirmed) return;
+    }
+    
+    const updatedGroups = groups.filter(group => group.id !== groupId);
+    form.setValue('tripDetails.groups', updatedGroups);
     toast.success('Group removed');
   };
 
   const handleDuplicateGroup = (groupId: string) => {
-    duplicateGroup(groupId);
-    toast.success('Group duplicated');
+    const groups = form.watch('tripDetails.groups') || [];
+    const groupToDuplicate = groups.find(g => g.id === groupId);
+    
+    if (groupToDuplicate) {
+      const newGroup: TravelerGroup = {
+        ...groupToDuplicate,
+        id: `group_${Date.now()}`,
+        name: `${groupToDuplicate.name} (Copy)`,
+      };
+      
+      const updatedGroups = [...groups, newGroup];
+      form.setValue('tripDetails.groups', updatedGroups);
+      toast.success('Group duplicated');
+    }
   };
 
   const handleEditGroup = (groupId: string) => {
@@ -225,15 +450,20 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
   };
 
   // Quick duration selection
-  const selectDurationFromToday = (days: number) => {
-    const startDate = new Date();
-    const endDate = addDays(startDate, days - 1);
+  const selectDurationFromStartDate = (days: number) => {
+    // Use the selected start date if available, otherwise use today
+    const currentStartDate = startDate ? new Date(startDate) : new Date();
+    const endDate = addDays(currentStartDate, days - 1);
     
-    form.setValue('tripDetails.startDate', format(startDate, 'yyyy-MM-dd'));
+    // Only set start date if it's not already set
+    if (!startDate) {
+      form.setValue('tripDetails.startDate', format(currentStartDate, 'yyyy-MM-dd'));
+      setSelectedMonth(currentStartDate);
+    }
+    
     form.setValue('tripDetails.endDate', format(endDate, 'yyyy-MM-dd'));
     form.setValue('tripDetails.duration', days);
     
-    setSelectedMonth(startDate);
     setSelectedEndMonth(endDate);
   };
 
@@ -290,7 +520,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="mx-auto space-y-8 max-w-4xl"
+      className="mx-auto space-y-6 max-w-4xl"
     >
       {/* Trip Purpose & Destination */}
       <motion.div
@@ -298,62 +528,92 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
       >
-        <Card className="bg-gradient-to-br from-[var(--card)] via-[var(--card)]/95 to-[var(--background)]/30 border border-[var(--border)] rounded-3xl shadow-lg overflow-hidden backdrop-blur-sm">
-          <CardHeader className="pb-6">
-            <CardTitle className="flex items-center gap-4 text-[var(--card-foreground)]">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--primary)]/20 to-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/30 shadow-sm">
-                <Globe className="h-6 w-6 text-[var(--primary)]" />
+        <Card className="bg-gradient-to-b from-[var(--card)]/95 to-[var(--background)]/20 border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3 text-[var(--card-foreground)]">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)]/20 to-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/30 shadow-sm">
+                <Globe className="h-5 w-5 text-[var(--primary)]" />
               </div>
               <div>
-                <div className="text-xl font-bold">Trip Purpose & Destination</div>
-                <div className="text-sm font-normal text-[var(--muted-foreground)] mt-1">
+                <div className="text-lg font-semibold">Trip Purpose & Destination</div>
+                <div className="text-sm font-normal text-[var(--muted-foreground)]">
                   Tell us about your travel plans and where you're headed
                 </div>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-8">
+          <CardContent className="space-y-6">
             {/* Trip Purpose Selection */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <Star className="h-4 w-4 text-[var(--primary)]" />
                 Trip Purpose
               </Label>
-              <Controller
-                name="tripDetails.purpose"
-                control={form.control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger disabled={disabled} className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 transition-all duration-200">
-                      <SelectValue placeholder="Select your trip purpose" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl border-[var(--border)] bg-[var(--background)]">
-                      {PURPOSE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value} className="rounded-lg">
-                          <div className="flex items-center gap-3 py-1">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center border", option.color)}>
-                              <option.icon className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-[var(--foreground)]">{option.label}</div>
-                              <div className="text-xs text-[var(--muted-foreground)]">{option.description}</div>
-                            </div>
+              
+              {/* Enhanced Purpose Selection with Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {PURPOSE_OPTIONS.map((option) => {
+                  const isSelected = form.watch('tripDetails.purpose') === option.value;
+                  return (
+                    <div
+                      key={option.value}
+                      className={cn(
+                        "relative flex cursor-pointer rounded-lg border-2 p-3 transition-all duration-200 hover:scale-[1.01] hover:shadow-sm",
+                        isSelected
+                          ? "border-[var(--primary)] bg-gradient-to-br from-[var(--primary)]/10 to-[var(--primary)]/5 shadow-sm"
+                          : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50 hover:bg-[var(--accent)]/20"
+                      )}
+                      onClick={() => form.setValue('tripDetails.purpose', option.value)}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <div className={cn(
+                          "w-10 h-10 rounded-lg flex items-center justify-center border-2 transition-all duration-200",
+                          isSelected
+                            ? "bg-[var(--primary)] border-[var(--primary)] shadow-sm"
+                            : "bg-[var(--muted)]/50 border-[var(--border)]"
+                        )}>
+                          <option.icon className={cn(
+                            "w-5 h-5 transition-colors duration-200",
+                            isSelected ? "text-white" : "text-[var(--muted-foreground)]"
+                          )} />
+                        </div>
+                        <div className="flex-1">
+                          <div className={cn(
+                            "font-semibold transition-colors duration-200",
+                            isSelected ? "text-[var(--primary)]" : "text-[var(--foreground)]"
+                          )}>
+                            {option.label}
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+                          <div className="text-xs text-[var(--muted-foreground)] mt-1">
+                            {option.description}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center">
+                            <CheckCircle className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Destination Input with Google Maps Autocomplete */}
-            <div className="space-y-4">
+            {/* Destination Input with Enhanced Styling */}
+            <div className="space-y-3">
               <Label htmlFor="primaryDestination" className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-[var(--primary)]" />
                 Primary Destination *
               </Label>
-              <div className="relative">
+              
+              <div className="relative group">
+                <div className={cn(
+                  "absolute inset-0 rounded-xl border-2 transition-all duration-200",
+                  form.formState.errors.tripDetails?.primaryDestination
+                    ? "border-red-500/50"
+                    : "border-[var(--border)] group-focus-within:border-[var(--primary)]/50"
+                )} />
                 <Input
                   ref={e => {
                     primaryInputRef.current = e;
@@ -362,15 +622,41 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                   {...primaryRegisterProps}
                   placeholder="e.g. Paris, France"
                   disabled={disabled}
-                  className="pl-10 h-11 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20"
+                  className="relative h-10 pl-12 pr-4 rounded-lg border-0 bg-transparent focus:ring-0 focus:border-0 placeholder:text-[var(--muted-foreground)]/60"
                 />
-                <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)]" />
+                <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)] group-focus-within:text-[var(--primary)] transition-colors duration-200" />
+                
+                {/* Enhanced validation message */}
+                {form.formState.errors.tripDetails?.primaryDestination && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+                    <p className="text-red-600 text-sm flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      {form.formState.errors.tripDetails.primaryDestination.message}
+                    </p>
+                  </div>
+                )}
               </div>
-              {form.formState.errors.tripDetails?.primaryDestination && (
-                <p className="text-red-500 text-sm mt-2 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" />
-                  {form.formState.errors.tripDetails.primaryDestination.message}
-                </p>
+              
+              {/* Destination Preview */}
+              {primaryPlace && (
+                <div className="p-3 bg-gradient-to-r from-[var(--accent)]/20 to-[var(--accent)]/10 rounded-lg border border-[var(--accent)]/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent)]/20 flex items-center justify-center">
+                      <MapPin className="h-4 w-4 text-[var(--accent-foreground)]" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-[var(--accent-foreground)]">
+                        {primaryPlace.city}, {primaryPlace.country}
+                      </div>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        {primaryPlace.state && `${primaryPlace.state}, `}{primaryPlace.country}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="bg-[var(--accent)]/20 text-[var(--accent-foreground)] border-[var(--accent)]/30">
+                      Selected
+                    </Badge>
+                  </div>
+                </div>
               )}
             </div>
           </CardContent>
@@ -383,42 +669,47 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
       >
-        <Card className="bg-gradient-to-br from-[var(--card)] via-[var(--card)]/95 to-[var(--background)]/30 border border-[var(--border)] rounded-3xl shadow-lg overflow-hidden backdrop-blur-sm">
-          <CardHeader className="pb-6">
-            <CardTitle className="flex items-center gap-4 text-[var(--card-foreground)]">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--secondary)]/20 to-[var(--secondary)]/10 flex items-center justify-center border border-[var(--secondary)]/30 shadow-sm">
-                <CalendarDays className="h-6 w-6 text-[var(--secondary)]" />
+        <Card className="bg-gradient-to-b from-[var(--card)]/95 to-[var(--background)]/20 border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3 text-[var(--card-foreground)]">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--secondary)]/20 to-[var(--secondary)]/10 flex items-center justify-center border border-[var(--secondary)]/30 shadow-sm">
+                <CalendarDays className="h-5 w-5 text-[var(--secondary)]" />
               </div>
               <div>
-                <div className="text-xl font-bold">Travel Dates</div>
-                <div className="text-sm font-normal text-[var(--muted-foreground)] mt-1">
+                <div className="text-lg font-semibold">Travel Dates</div>
+                <div className="text-sm font-normal text-[var(--muted-foreground)]">
                   When are you planning to travel?
                 </div>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-8">
+          <CardContent className="space-y-6">
             {/* Popular Periods */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <Star className="h-4 w-4 text-[var(--primary)]" />
                 Popular Periods
               </Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {popularPeriods.map((period) => {
                   const Icon = period.icon;
                   return (
-                    <Button
+                    <div
                       key={period.label}
-                      type="button"
-                      variant="outline"
-                      size="sm"
+                      className={cn(
+                        "flex items-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:scale-[1.01] hover:shadow-sm",
+                        "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50 hover:bg-[var(--accent)]/20"
+                      )}
                       onClick={() => handlePopularPeriod(period)}
-                      className={cn("text-xs h-8 px-3 rounded-lg", period.color)}
                     >
-                      <Icon className="h-3 w-3 mr-1" />
-                      {period.label}
-                    </Button>
+                      <div className={cn("w-6 h-6 rounded-md flex items-center justify-center", period.color)}>
+                        <Icon className="h-3 w-3" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-[var(--foreground)]">{period.label}</div>
+                        <div className="text-xs text-[var(--muted-foreground)]">Popular travel time</div>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -428,31 +719,37 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <Clock className="h-4 w-4 text-[var(--primary)]" />
-                Quick Duration
+                Quick Duration from Start Date
               </Label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                 {quickDurations.map((duration) => (
-                  <Button
+                  <div
                     key={duration.label}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectDurationFromToday(duration.value)}
-                    className="text-xs h-8 px-3 rounded-lg border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30 transition-all duration-200"
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-md text-center",
+                      "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50 hover:bg-[var(--accent)]/20"
+                    )}
+                    onClick={() => selectDurationFromStartDate(duration.value)}
                   >
-                    {duration.label}
-                  </Button>
+                    <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center">
+                      <Calendar className="h-4 w-4 text-[var(--primary)]" />
+                    </div>
+                    <div>
+                      <div className="font-medium text-[var(--foreground)] text-sm">{duration.label}</div>
+                      <div className="text-xs text-[var(--muted-foreground)]">{duration.value} days</div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
 
             {/* Date Selection */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[var(--primary)]" />
                 Select Dates
               </Label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {/* Start Date */}
                 <div className="space-y-2">
                   <Label className="text-xs text-[var(--muted-foreground)]">Start Date *</Label>
@@ -461,7 +758,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-all duration-200",
+                          "w-full justify-start text-left font-normal h-10 rounded-lg border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-all duration-200",
                           !startDate && "text-[var(--muted-foreground)]"
                         )}
                       >
@@ -526,7 +823,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-all duration-200",
+                          "w-full justify-start text-left font-normal h-10 rounded-lg border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-all duration-200",
                           !endDate && "text-[var(--muted-foreground)]"
                         )}
                         disabled={!startDate}
@@ -591,10 +888,10 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-3 p-4 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 rounded-2xl border border-[var(--primary)]/20"
+                className="flex items-center gap-3 p-3 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 rounded-lg border border-[var(--primary)]/20"
               >
-                <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/20 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-[var(--primary)]" />
+                <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/20 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-[var(--primary)]" />
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-[var(--primary)]">
@@ -627,54 +924,85 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.6 }}
       >
-        <Card className="bg-gradient-to-br from-[var(--card)] via-[var(--card)]/95 to-[var(--background)]/30 border border-[var(--border)] rounded-3xl shadow-lg overflow-hidden backdrop-blur-sm">
-          <CardHeader className="pb-6">
-            <CardTitle className="flex items-center gap-4 text-[var(--card-foreground)]">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--primary-600)]/20 to-[var(--primary-600)]/10 flex items-center justify-center border border-[var(--primary-600)]/30 shadow-sm">
-                <Users className="h-6 w-6 text-[var(--primary-600)]" />
+        <Card className="bg-gradient-to-br from-[var(--card)] via-[var(--card)]/95 to-[var(--background)]/30 border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3 text-[var(--card-foreground)]">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary-600)]/20 to-[var(--primary-600)]/10 flex items-center justify-center border border-[var(--primary-600)]/30 shadow-sm">
+                <Users className="h-5 w-5 text-[var(--primary-600)]" />
               </div>
               <div>
-                <div className="text-xl font-bold">Traveler Count</div>
-                <div className="text-sm font-normal text-[var(--muted-foreground)] mt-1">
+                <div className="text-lg font-semibold">Traveler Count</div>
+                <div className="text-sm font-normal text-[var(--muted-foreground)]">
                   How many people are traveling with you?
                 </div>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-8">
-            {/* Quick Presets */}
-            <div className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* Traveler Type Selection */}
+            <div className="space-y-3">
               <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[var(--primary)]" />
-                Quick Presets
+                <Users className="h-4 w-4 text-[var(--primary)]" />
+                Traveler Type *
               </Label>
-              <div className="flex flex-wrap gap-2">
-                {travelerPresets.map((preset) => {
-                  const Icon = preset.icon;
+              <RadioGroup
+                value={selectedTravelerType}
+                onValueChange={handleTravelerTypeSelect}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2"
+              >
+                {travelerTypes.map((type) => {
+                  const Icon = type.icon;
+                  const isSelected = selectedTravelerType === type.value;
+                  const config = travelerConfigs[type.value as keyof typeof travelerConfigs];
+                  
                   return (
-                    <Button
-                      key={preset.label}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        form.setValue('tripDetails.totalTravelers.adults', preset.adults);
-                        form.setValue('tripDetails.totalTravelers.children', preset.children);
-                      }}
-                      className={cn("text-xs h-8 px-3 rounded-lg", preset.color)}
+                    <div
+                      key={type.value}
+                      className={cn(
+                        'relative p-3 rounded-lg border-2 transition-all duration-300 cursor-pointer',
+                        'bg-[var(--background)] hover:bg-[var(--accent)]',
+                        isSelected 
+                          ? 'border-[var(--primary)] bg-[var(--primary)]/5 shadow-sm' 
+                          : 'border-[var(--border)] hover:border-[var(--primary)]/30',
+                        disabled && "opacity-50 cursor-not-allowed"
+                      )}
                     >
-                      <Icon className="h-3 w-3 mr-1" />
-                      {preset.label}
-                    </Button>
+                      <RadioGroupItem
+                        value={type.value}
+                        id={type.value}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        disabled={disabled}
+                      />
+                      <div className="flex flex-col items-center text-center gap-2 pointer-events-none">
+                        <Icon className={cn(
+                          'h-5 w-5 transition-colors duration-300',
+                          isSelected ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]'
+                        )} />
+                        <div>
+                          <label htmlFor={type.value} className="text-sm font-semibold text-[var(--foreground)] block">
+                            {type.label}
+                          </label>
+                          <p className="text-xs text-[var(--muted-foreground)]">{type.description}</p>
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
+              </RadioGroup>
               </div>
+
+            {/* Traveler Count Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[var(--primary)]" />
+                <Label className="text-sm font-semibold text-[var(--foreground)]">
+                  Traveler Details
+                </Label>
             </div>
 
-            {/* Traveler Count Inputs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-4">
-                <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                  <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                   <Users className="h-4 w-4 text-[var(--primary)]" />
                   Adults *
                 </Label>
@@ -685,11 +1013,12 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                     size="sm"
                     onClick={() => {
                       const current = form.watch('tripDetails.totalTravelers.adults') || 0;
-                      if (current > 1) {
+                        const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                        if (current > config.minAdults) {
                         form.setValue('tripDetails.totalTravelers.adults', current - 1);
                       }
                     }}
-                    disabled={disabled || (form.watch('tripDetails.totalTravelers.adults') || 0) <= 1}
+                      disabled={disabled || (form.watch('tripDetails.totalTravelers.adults') || 0) <= (travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.minAdults || 1)}
                     className="h-12 w-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30 transition-all duration-200"
                   >
                     <Minus className="h-4 w-4" />
@@ -702,15 +1031,18 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                         {...field}
                         id="adults"
                         type="number"
-                        min="1"
+                          min={travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.minAdults || 1}
+                          max={travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.maxAdults || 20}
                         placeholder="1"
                         disabled={disabled}
                         value={field.value || ''}
                         onChange={(e) => {
                           const value = parseInt(e.target.value) || 0;
-                          field.onChange(value);
+                            const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                            const clampedValue = Math.max(config.minAdults, Math.min(config.maxAdults, value));
+                            field.onChange(clampedValue);
                         }}
-                        className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 transition-all duration-200 text-center text-lg font-semibold"
+                        className="h-10 rounded-lg border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 transition-all duration-200 text-center text-base font-semibold"
                       />
                     )}
                   />
@@ -720,9 +1052,12 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                     size="sm"
                     onClick={() => {
                       const current = form.watch('tripDetails.totalTravelers.adults') || 0;
+                        const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                        if (current < config.maxAdults) {
                       form.setValue('tripDetails.totalTravelers.adults', current + 1);
+                        }
                     }}
-                    disabled={disabled}
+                      disabled={disabled || (form.watch('tripDetails.totalTravelers.adults') || 0) >= (travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.maxAdults || 20)}
                     className="h-12 w-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30 transition-all duration-200"
                   >
                     <Plus className="h-4 w-4" />
@@ -740,7 +1075,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
               </div>
 
               <div className="space-y-4">
-                <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                  <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                   <Users className="h-4 w-4 text-[var(--secondary)]" />
                   Children
                 </Label>
@@ -751,11 +1086,12 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                     size="sm"
                     onClick={() => {
                       const current = form.watch('tripDetails.totalTravelers.children') || 0;
-                      if (current > 0) {
+                        const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                        if (current > config.minChildren) {
                         form.setValue('tripDetails.totalTravelers.children', current - 1);
                       }
                     }}
-                    disabled={disabled || (form.watch('tripDetails.totalTravelers.children') || 0) <= 0}
+                      disabled={disabled || (form.watch('tripDetails.totalTravelers.children') || 0) <= (travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.minChildren || 0)}
                     className="h-12 w-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--secondary)]/30 transition-all duration-200"
                   >
                     <Minus className="h-4 w-4" />
@@ -768,13 +1104,16 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                         {...field}
                         id="children"
                         type="number"
-                        min="0"
+                          min={travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.minChildren || 0}
+                          max={travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.maxChildren || 10}
                         placeholder="0"
                         disabled={disabled}
                         value={field.value || ''}
                         onChange={(e) => {
                           const value = parseInt(e.target.value) || 0;
-                          field.onChange(value);
+                            const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                            const clampedValue = Math.max(config.minChildren, Math.min(config.maxChildren, value));
+                            field.onChange(clampedValue);
                         }}
                         className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--secondary)] focus:ring-[var(--secondary)]/20 transition-all duration-200 text-center text-lg font-semibold"
                       />
@@ -786,9 +1125,12 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                     size="sm"
                     onClick={() => {
                       const current = form.watch('tripDetails.totalTravelers.children') || 0;
+                        const config = travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs];
+                        if (current < config.maxChildren) {
                       form.setValue('tripDetails.totalTravelers.children', current + 1);
+                        }
                     }}
-                    disabled={disabled}
+                      disabled={disabled || (form.watch('tripDetails.totalTravelers.children') || 0) >= (travelerConfigs[selectedTravelerType as keyof typeof travelerConfigs]?.maxChildren || 10)}
                     className="h-12 w-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--secondary)]/30 transition-all duration-200"
                   >
                     <Plus className="h-4 w-4" />
@@ -829,12 +1171,13 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                 </Badge>
               </motion.div>
             )}
+            </div>
           </CardContent>
         </Card>
       </motion.div>
 
-      {/* Advanced Grouping */}
-      {(form.watch('tripDetails.totalTravelers.adults') || 0) + (form.watch('tripDetails.totalTravelers.children') || 0) > 1 && (
+      {/* Advanced Grouping - Only show for Group type */}
+      {selectedTravelerType === 'group' && (form.watch('tripDetails.totalTravelers.adults') || 0) + (form.watch('tripDetails.totalTravelers.children') || 0) > 1 && (
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -849,7 +1192,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                 <div>
                   <div className="text-xl font-bold">Travel Groups</div>
                   <div className="text-sm font-normal text-[var(--muted-foreground)] mt-1">
-                    Organize travelers into groups for different preferences
+                    Organize travelers into groups for different preferences and booking requirements
                   </div>
                 </div>
               </CardTitle>
@@ -860,15 +1203,22 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                   <Switch
                     id="useSubgroups"
                     checked={useSubgroups}
-                    onCheckedChange={(checked) => form.setValue('tripDetails.useSubgroups', checked)}
+                    onCheckedChange={(checked) => {
+                      form.setValue('tripDetails.useSubgroups', checked);
+                      if (!checked) {
+                        // Clear groups when disabling subgroups
+                        form.setValue('tripDetails.groups', []);
+                        toast.success('Groups cleared - using single booking');
+                      }
+                    }}
                     disabled={disabled}
                   />
                   <div>
                     <Label htmlFor="useSubgroups" className="text-sm font-semibold text-[var(--foreground)]">
-                      Use travel subgroups
+                      Enable travel subgroups
                     </Label>
                     <p className="text-xs text-[var(--muted-foreground)]">
-                      Create separate groups for different booking preferences
+                      Create separate groups for different booking preferences, budgets, or travel styles
                     </p>
                   </div>
                 </div>
@@ -896,7 +1246,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                           if (totalAdults + totalChildren > 1) {
                             const newGroups: TravelerGroup[] = [];
                             
-                            // Create smart groups based on traveler composition
+                            // Intelligent group creation based on traveler composition
                             if (totalAdults > 0 && totalChildren > 0) {
                               // Mixed group - create separate groups
                               newGroups.push({
@@ -925,10 +1275,11 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                                 notes: 'Children travelers group',
                               });
                             } else if (totalAdults > 1) {
-                              // Multiple adults - create groups of 2
-                              const groupCount = Math.ceil(totalAdults / 2);
+                              // Multiple adults - create groups of 2-3
+                              const groupSize = totalAdults <= 6 ? 2 : 3;
+                              const groupCount = Math.ceil(totalAdults / groupSize);
                               for (let i = 0; i < groupCount; i++) {
-                                const groupAdults = Math.min(2, totalAdults - (i * 2));
+                                const groupAdults = Math.min(groupSize, totalAdults - (i * groupSize));
                                 newGroups.push({
                                   id: `group_${Date.now()}_${i}`,
                                   name: `Group ${i + 1}`,
@@ -936,7 +1287,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                                   children: 0,
                                   childAges: [],
                                   travelerNames: Array.from({ length: groupAdults }, (_, j) => ({
-                                    name: `Adult ${(i * 2) + j + 1}`,
+                                    name: `Adult ${(i * groupSize) + j + 1}`,
                                     type: 'adult' as const,
                                   })),
                                   notes: `Travel group ${i + 1}`,
@@ -988,7 +1339,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                             }
                             
                             form.setValue('tripDetails.groups', newGroups);
-                            toast.success(`Created ${newGroups.length} smart groups based on your travelers`);
+                            toast.success(`Created ${newGroups.length} intelligent groups based on your travelers`);
                           }
                         }}
                         disabled={disabled}
@@ -1001,423 +1352,138 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          // Auto-create groups based on total travelers
-                          const totalAdults = form.watch('tripDetails.totalTravelers.adults') || 0;
-                          const totalChildren = form.watch('tripDetails.totalTravelers.children') || 0;
-                          
-                          if (totalAdults + totalChildren > 1) {
-                            // Create default groups
-                            const newGroups: TravelerGroup[] = [];
-                            
-                            if (totalAdults > 0) {
-                              newGroups.push({
-                                id: `group_${Date.now()}_adults`,
-                                name: 'Adults Group',
-                                adults: totalAdults,
-                                children: 0,
-                                childAges: [],
-                                travelerNames: Array.from({ length: totalAdults }, (_, i) => ({
-                                  name: `Adult ${i + 1}`,
-                                  type: 'adult' as const,
-                                })),
-                                notes: 'Adult travelers group',
-                              });
-                            }
-                            
-                            if (totalChildren > 0) {
-                              newGroups.push({
-                                id: `group_${Date.now()}_children`,
-                                name: 'Children Group',
-                                adults: 0,
-                                children: totalChildren,
-                                childAges: Array.from({ length: totalChildren }, (_, i) => 10 + i),
-                                travelerNames: Array.from({ length: totalChildren }, (_, i) => ({
-                                  name: `Child ${i + 1}`,
-                                  type: 'child' as const,
-                                  age: 10 + i,
-                                })),
-                                notes: 'Children travelers group',
-                              });
-                            }
-                            
-                            form.setValue('tripDetails.groups', newGroups);
-                            toast.success('Default groups created based on traveler count');
-                          }
-                        }}
+                        onClick={handleAddGroup}
                         disabled={disabled}
                         className="h-9 px-3 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30 transition-all duration-200 text-xs"
                       >
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Auto Create
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddGroup}
-                        disabled={disabled}
-                        className="h-9 px-4 rounded-xl border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30 transition-all duration-200"
-                      >
-                        <UserPlus className="h-4 w-4 mr-2" />
+                        <Plus className="h-3 w-3 mr-1" />
                         Add Group
                       </Button>
                     </div>
                   </div>
 
-                  {/* Groups Summary */}
-                  {groups.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gradient-to-r from-[var(--muted)]/20 to-[var(--muted)]/10 rounded-2xl border border-[var(--muted)]/20">
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-[var(--foreground)]">{groups.length}</div>
-                          <div className="text-xs text-[var(--muted-foreground)]">Groups</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-[var(--foreground)]">
-                            {groups.reduce((sum, group) => sum + (group.adults || 0), 0)}
-                          </div>
-                          <div className="text-xs text-[var(--muted-foreground)]">Total Adults</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-[var(--foreground)]">
-                            {groups.reduce((sum, group) => sum + (group.children || 0), 0)}
-                          </div>
-                          <div className="text-xs text-[var(--muted-foreground)]">Total Children</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-[var(--foreground)]">
-                            {groups.reduce((sum, group) => sum + (group.adults || 0) + (group.children || 0), 0)}
-                          </div>
-                          <div className="text-xs text-[var(--muted-foreground)]">Total Travelers</div>
-                        </div>
+                  {/* Group Validation Status */}
+                  <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--muted)]/20">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center",
+                        hasValidGroups ? "bg-green-500/20 text-green-600" : "bg-orange-500/20 text-orange-600"
+                      )}>
+                        {hasValidGroups ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                       </div>
-
-                      {/* Validation Warning */}
-                      {(() => {
-                        const groupAdults = groups.reduce((sum, group) => sum + (group.adults || 0), 0);
-                        const groupChildren = groups.reduce((sum, group) => sum + (group.children || 0), 0);
-                        
-                        if (groupAdults !== totalAdults || groupChildren !== totalChildren) {
-                          return (
-                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                              <div className="flex items-center gap-3">
-                                <AlertCircle className="h-5 w-5 text-amber-600" />
-                                <div className="flex-1">
-                                  <div className="text-sm font-semibold text-amber-800">
-                                    Group totals don't match traveler count
-                                  </div>
-                                  <div className="text-xs text-amber-700 mt-1">
-                                    Groups: {groupAdults} adults, {groupChildren} children | 
-                                    Total: {totalAdults} adults, {totalChildren} children
-                                  </div>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    // Auto-adjust groups to match totals
-                                    const newGroups = [...groups];
-                                    let remainingAdults = totalAdults;
-                                    let remainingChildren = totalChildren;
-                                    
-                                    // Distribute remaining travelers to existing groups
-                                    for (let i = 0; i < newGroups.length && (remainingAdults > 0 || remainingChildren > 0); i++) {
-                                      const group = newGroups[i];
-                                      const currentAdults = group.adults || 0;
-                                      const currentChildren = group.children || 0;
-                                      
-                                      // Add remaining adults to this group
-                                      if (remainingAdults > 0) {
-                                        const adultsToAdd = Math.min(remainingAdults, 2); // Max 2 per group
-                                        group.adults = currentAdults + adultsToAdd;
-                                        remainingAdults -= adultsToAdd;
-                                      }
-                                      
-                                      // Add remaining children to this group
-                                      if (remainingChildren > 0) {
-                                        const childrenToAdd = Math.min(remainingChildren, 2); // Max 2 per group
-                                        group.children = currentChildren + childrenToAdd;
-                                        remainingChildren -= childrenToAdd;
-                                        
-                                        // Add ages for new children
-                                        for (let j = 0; j < childrenToAdd; j++) {
-                                          group.childAges.push(10 + j);
-                                        }
-                                      }
-                                    }
-                                    
-                                    // Create new groups if needed
-                                    if (remainingAdults > 0 || remainingChildren > 0) {
-                                      if (remainingAdults > 0) {
-                                        newGroups.push({
-                                          id: `group_${Date.now()}_remaining_adults`,
-                                          name: 'Additional Adults',
-                                          adults: remainingAdults,
-                                          children: 0,
-                                          childAges: [],
-                                          travelerNames: Array.from({ length: remainingAdults }, (_, i) => ({
-                                            name: `Adult ${totalAdults - remainingAdults + i + 1}`,
-                                            type: 'adult' as const,
-                                          })),
-                                          notes: 'Additional adult travelers',
-                                        });
-                                      }
-                                      
-                                      if (remainingChildren > 0) {
-                                        newGroups.push({
-                                          id: `group_${Date.now()}_remaining_children`,
-                                          name: 'Additional Children',
-                                          adults: 0,
-                                          children: remainingChildren,
-                                          childAges: Array.from({ length: remainingChildren }, (_, i) => 10 + i),
-                                          travelerNames: Array.from({ length: remainingChildren }, (_, i) => ({
-                                            name: `Child ${totalChildren - remainingChildren + i + 1}`,
-                                            type: 'child' as const,
-                                            age: 10 + i,
-                                          })),
-                                          notes: 'Additional child travelers',
-                                        });
-                                      }
-                                    }
-                                    
-                                    form.setValue('tripDetails.groups', newGroups);
-                                    toast.success('Groups adjusted to match traveler count');
-                                  }}
-                                  className="h-8 text-xs bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200"
-                                >
-                                  Auto Fix
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
+                      <div>
+                        <h5 className="font-semibold text-[var(--foreground)]">
+                          {hasValidGroups ? 'Groups Validated' : 'Group Validation Required'}
+                        </h5>
+                        <p className="text-xs text-[var(--muted-foreground)]">
+                          {hasValidGroups 
+                            ? 'All travelers are properly assigned to groups' 
+                            : 'Please ensure all travelers are assigned to groups'
+                          }
+                        </p>
+                      </div>
                     </div>
-                  )}
+                    
+                    {/* Group Summary */}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--background)]/50">
+                        <span className="text-[var(--muted-foreground)]">Total Adults:</span>
+                        <span className="font-semibold text-[var(--foreground)]">{totalAdults}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--background)]/50">
+                        <span className="text-[var(--muted-foreground)]">Total Children:</span>
+                        <span className="font-semibold text-[var(--foreground)]">{totalChildren}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--background)]/50">
+                        <span className="text-[var(--muted-foreground)]">Groups Created:</span>
+                        <span className="font-semibold text-[var(--foreground)]">{(groups || []).length}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--background)]/50">
+                        <span className="text-[var(--muted-foreground)]">Status:</span>
+                        <Badge variant={hasValidGroups ? "default" : "secondary"} className="text-xs">
+                          {hasValidGroups ? 'Ready' : 'Incomplete'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
 
-                  <AnimatePresence>
-                    {groups.map((group, index) => (
+                  {/* Groups List */}
+                  <div className="space-y-3">
+                    {(groups || []).map((group, index) => (
                       <motion.div
                         key={group.id}
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="border border-[var(--border)] rounded-2xl p-6 space-y-4 bg-gradient-to-br from-[var(--background)]/50 to-[var(--background)]/20 backdrop-blur-sm hover:shadow-md transition-all duration-200"
+                        transition={{ delay: index * 0.1 }}
+                        className="p-4 rounded-xl border border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-all duration-200"
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/20">
-                              <Users className="h-5 w-5 text-[var(--primary)]" />
+                            <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center">
+                              <Group className="h-4 w-4 text-[var(--primary)]" />
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--foreground)]">{group.name}</span>
-                              <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="secondary" className="text-xs bg-[var(--accent)]/20 text-[var(--accent-foreground)]">
-                                  {group.adults + group.children} travelers
-                                </Badge>
-                                {group.adults > 0 && (
-                                  <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-200">
-                                    {group.adults} adults
-                                  </Badge>
-                                )}
-                                {group.children > 0 && (
-                                  <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200">
-                                    {group.children} children
-                                  </Badge>
-                                )}
-                              </div>
+                              <h5 className="font-semibold text-[var(--foreground)]">{group.name}</h5>
+                              <p className="text-xs text-[var(--muted-foreground)]">
+                                {(group.adults || 0) + (group.children || 0)} travelers
+                              </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
                               type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDuplicateGroup(group.id)}
-                              disabled={disabled}
-                              className="h-8 w-8 p-0 rounded-lg hover:bg-[var(--accent)] transition-colors"
-                              title="Duplicate group"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               onClick={() => handleEditGroup(group.id)}
                               disabled={disabled}
-                              className="h-8 w-8 p-0 rounded-lg hover:bg-[var(--accent)] transition-colors"
-                              title="Edit group"
+                              className="h-8 w-8 p-0"
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-3 w-3" />
                             </Button>
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDuplicateGroup(group.id)}
+                              disabled={disabled}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
                               size="sm"
                               onClick={() => handleRemoveGroup(group.id)}
                               disabled={disabled}
-                              className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 hover:text-red-700 transition-colors"
-                              title="Remove group"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="flex items-center gap-2 p-3 bg-[var(--accent)]/10 rounded-xl">
-                            <Users className="h-4 w-4 text-[var(--accent-foreground)]" />
-                            <div>
-                              <span className="text-[var(--muted-foreground)]">Adults:</span>
-                              <span className="ml-2 font-semibold text-[var(--foreground)]">{group.adults}</span>
-                            </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3 w-3 text-[var(--primary)]" />
+                            <span className="text-[var(--muted-foreground)]">Adults:</span>
+                            <span className="font-medium text-[var(--foreground)]">{group.adults || 0}</span>
                           </div>
-                          <div className="flex items-center gap-2 p-3 bg-[var(--accent)]/10 rounded-xl">
-                            <Users className="h-4 w-4 text-[var(--accent-foreground)]" />
-                            <div>
-                              <span className="text-[var(--muted-foreground)]">Children:</span>
-                              <span className="ml-2 font-semibold text-[var(--foreground)]">{group.children}</span>
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3 w-3 text-[var(--secondary)]" />
+                            <span className="text-[var(--muted-foreground)]">Children:</span>
+                            <span className="font-medium text-[var(--foreground)]">{group.children || 0}</span>
                           </div>
                         </div>
-
-                        {/* Child Ages Display */}
-                        {group.children > 0 && group.childAges && group.childAges.length > 0 && (
-                          <div className="p-3 bg-[var(--secondary)]/10 rounded-xl">
-                            <div className="text-sm text-[var(--muted-foreground)] mb-2 flex items-center gap-2">
-                              <Users className="h-3 w-3" />
-                              Child Ages:
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {group.childAges.map((age, ageIndex) => (
-                                <Badge key={ageIndex} variant="outline" className="text-xs">
-                                  {age} years old
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Traveler Names Display */}
-                        {group.travelerNames && group.travelerNames.length > 0 && (
-                          <div className="p-3 bg-[var(--muted)]/10 rounded-xl">
-                            <div className="text-sm text-[var(--muted-foreground)] mb-2 flex items-center gap-2">
-                              <User className="h-3 w-3" />
-                              Travelers:
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {group.travelerNames.map((traveler, travelerIndex) => (
-                                <Badge 
-                                  key={travelerIndex} 
-                                  variant="outline" 
-                                  className={cn(
-                                    "text-xs",
-                                    traveler.type === 'adult' 
-                                      ? "bg-blue-100 text-blue-700 border-blue-200" 
-                                      : "bg-green-100 text-green-700 border-green-200"
-                                  )}
-                                >
-                                  {traveler.name} ({traveler.type})
-                                  {traveler.type === 'child' && traveler.age && `, ${traveler.age}y`}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Group Notes */}
+                        
                         {group.notes && (
-                          <div className="p-3 bg-[var(--muted)]/10 rounded-xl">
-                            <div className="text-sm text-[var(--muted-foreground)]">
-                              <span className="font-medium text-[var(--foreground)]">Notes:</span> {group.notes}
-                            </div>
+                          <div className="mt-3 p-2 rounded-lg bg-[var(--muted)]/30">
+                            <p className="text-xs text-[var(--muted-foreground)]">{group.notes}</p>
                           </div>
                         )}
                       </motion.div>
                     ))}
-                  </AnimatePresence>
-
-                  {/* Empty State */}
-                  {groups.length === 0 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-center py-12 border-2 border-dashed border-[var(--border)] rounded-2xl bg-[var(--muted)]/10"
-                    >
-                      <Users className="h-12 w-12 text-[var(--muted-foreground)] mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">No groups created yet</h3>
-                      <p className="text-sm text-[var(--muted-foreground)] mb-4">
-                        Create travel groups to organize travelers with different preferences
-                      </p>
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            const totalAdults = form.watch('tripDetails.totalTravelers.adults') || 0;
-                            const totalChildren = form.watch('tripDetails.totalTravelers.children') || 0;
-                            
-                            if (totalAdults + totalChildren > 1) {
-                              const newGroups: TravelerGroup[] = [];
-                              
-                              if (totalAdults > 0) {
-                                newGroups.push({
-                                  id: `group_${Date.now()}_adults`,
-                                  name: 'Adults Group',
-                                  adults: totalAdults,
-                                  children: 0,
-                                  childAges: [],
-                                  travelerNames: Array.from({ length: totalAdults }, (_, i) => ({
-                                    name: `Adult ${i + 1}`,
-                                    type: 'adult' as const,
-                                  })),
-                                  notes: 'Adult travelers group',
-                                });
-                              }
-                              
-                              if (totalChildren > 0) {
-                                newGroups.push({
-                                  id: `group_${Date.now()}_children`,
-                                  name: 'Children Group',
-                                  adults: 0,
-                                  children: totalChildren,
-                                  childAges: Array.from({ length: totalChildren }, (_, i) => 10 + i),
-                                  travelerNames: Array.from({ length: totalChildren }, (_, i) => ({
-                                    name: `Child ${i + 1}`,
-                                    type: 'child' as const,
-                                    age: 10 + i,
-                                  })),
-                                  notes: 'Children travelers group',
-                                });
-                              }
-                              
-                              form.setValue('tripDetails.groups', newGroups);
-                              toast.success('Default groups created based on traveler count');
-                            }
-                          }}
-                          disabled={disabled}
-                          className="rounded-xl"
-                        >
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Auto Create Groups
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleAddGroup}
-                          disabled={disabled}
-                          className="rounded-xl"
-                        >
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Create Manual Group
-                        </Button>
-                      </div>
-                    </motion.div>
-                  )}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -1455,6 +1521,16 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
           )}
         </div>
       </motion.div>
+
+      {/* Group Form Modal */}
+      {showGroupForm && (
+        <GroupFormModal
+          group={editingGroupId ? groups.find(g => g.id === editingGroupId) : undefined}
+          onSave={handleUpdateGroup}
+          onCancel={handleCancelEdit}
+          disabled={disabled}
+        />
+      )}
     </motion.div>
   );
 }

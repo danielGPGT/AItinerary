@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { 
   Hotel, 
   Star, 
@@ -25,13 +26,16 @@ import {
   Clock,
   Building2,
   Phone,
-  Mail
+  Mail,
+  Home,
+  Group,
+  User
 } from 'lucide-react';
 import { cn, convertCurrency, formatCurrency } from '@/lib/utils';
 import { rateHawkService, type RateHawkSearchResponse, type RateHawkHotelWithRooms } from '@/lib/api/ratehawk';
 import { toast } from 'sonner';
 import { useNewIntakeStore } from '@/store/newIntake';
-import { NewIntake } from '@/types/newIntake';
+import { NewIntake, TravelerGroup } from '@/types/newIntake';
 
 interface Step4HotelsProps {
   disabled?: boolean;
@@ -45,6 +49,11 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedHotel, setSelectedHotel] = useState<RateHawkHotelWithRooms | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  
+  // Group assignment state
+  const [accommodationType, setAccommodationType] = useState<'hotel' | 'villa'>('hotel');
+  const [groupAssignmentMode, setGroupAssignmentMode] = useState<'together' | 'separate'>('together');
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
   // Get form values for search
   const destination = form.watch('tripDetails.primaryDestination');
@@ -54,6 +63,51 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
   const children = form.watch('tripDetails.totalTravelers.children') || 0;
   const hotelGroups = form.watch('hotels.groups') || [];
   const hotelsEnabled = form.watch('hotels.enabled');
+  const tripGroups = form.watch('tripDetails.groups') || [];
+  const useSubgroups = form.watch('tripDetails.useSubgroups') || false;
+
+  // Helper functions for group logic
+  const getAvailableGroups = (): TravelerGroup[] => {
+    if (!useSubgroups || tripGroups.length === 0) {
+      // Return a default group if no subgroups
+      return [{
+        id: 'default',
+        name: 'All Travelers',
+        adults,
+        children,
+        childAges: [],
+        travelerNames: [],
+        notes: '',
+      }];
+    }
+    return tripGroups;
+  };
+
+  const calculateTotalTravelers = (groupIds: string[]): { adults: number; children: number } => {
+    const groups = getAvailableGroups();
+    const selectedGroupsData = groups.filter(g => groupIds.includes(g.id));
+    
+    return selectedGroupsData.reduce(
+      (total, group) => ({
+        adults: total.adults + (group.adults || 0),
+        children: total.children + (group.children || 0),
+      }),
+      { adults: 0, children: 0 }
+    );
+  };
+
+  const calculateRequiredRooms = (groupIds: string[]): number => {
+    if (accommodationType === 'villa') {
+      // Villa can accommodate all travelers together
+      return 1;
+    }
+    
+    const { adults, children } = calculateTotalTravelers(groupIds);
+    // Assume 2 adults per room, children can share with parents
+    const adultRooms = Math.ceil(adults / 2);
+    const childRooms = children > 0 ? Math.ceil(children / 2) : 0;
+    return Math.max(adultRooms + childRooms, 1);
+  };
 
   const searchHotels = async () => {
     if (!destination || !startDate || !endDate) {
@@ -93,32 +147,44 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
     // Convert price to preferred currency with 2% spread
     const convertedPrice = convertCurrency(originalPrice, originalCurrency, preferredCurrency, 0.02);
 
-    // Create hotel group entry according to NewIntake schema
-    const hotelGroup = {
-      groupId: 'default', // Default group - can be enhanced later
-      destinationCity: destination || '',
-      numberOfRooms: 1, // Default to 1 room
-      roomTypes: [selectedRoom.name],
-      starRating: hotel.stars,
-      amenities: hotel.amenities || [],
-      useSameHotelAs: undefined,
-      selectedHotel: {
-        hotelId: hotel.id,
-        hotelName: hotel.name,
-        pricePerNight: originalPrice,
-        currency: originalCurrency,
-        roomType: selectedRoom.name,
-        checkIn: startDate,
-        checkOut: endDate,
-        // Converted price fields
-        convertedPricePerNight: convertedPrice,
-        convertedCurrency: preferredCurrency,
-      }
-    };
+    // Determine which groups to assign
+    const groupsToAssign = groupAssignmentMode === 'together' 
+      ? getAvailableGroups().map(g => g.id)
+      : selectedGroups.length > 0 ? selectedGroups : getAvailableGroups().map(g => g.id);
 
-    // Add to hotels groups (replace if already exists)
-    const updatedGroups = [hotelGroup];
-    form.setValue('hotels.groups', updatedGroups);
+    // Calculate required rooms
+    const requiredRooms = calculateRequiredRooms(groupsToAssign);
+
+    // Create hotel group entries for each assigned group
+    const hotelGroupEntries = groupsToAssign.map(groupId => {
+      const group = getAvailableGroups().find(g => g.id === groupId);
+      const groupTravelers = calculateTotalTravelers([groupId]);
+      
+      return {
+        groupId,
+        destinationCity: destination || '',
+        numberOfRooms: accommodationType === 'villa' ? 1 : Math.ceil(groupTravelers.adults / 2),
+        roomTypes: accommodationType === 'villa' ? ['Villa'] : [selectedRoom.name],
+        starRating: accommodationType === 'villa' ? 5 : hotel.stars,
+        amenities: accommodationType === 'villa' ? ['Private Pool', 'Kitchen', 'Multiple Bedrooms', 'Garden'] : (hotel.amenities || []),
+        useSameHotelAs: groupAssignmentMode === 'together' && groupsToAssign.length > 1 ? groupsToAssign[0] : undefined,
+        selectedHotel: {
+          hotelId: accommodationType === 'villa' ? `villa_${Date.now()}` : hotel.id,
+          hotelName: accommodationType === 'villa' ? 'Private Villa' : hotel.name,
+          pricePerNight: accommodationType === 'villa' ? originalPrice * requiredRooms : originalPrice,
+          currency: originalCurrency,
+          roomType: accommodationType === 'villa' ? 'Private Villa' : selectedRoom.name,
+          checkIn: startDate,
+          checkOut: endDate,
+          // Converted price fields
+          convertedPricePerNight: accommodationType === 'villa' ? convertedPrice * requiredRooms : convertedPrice,
+          convertedCurrency: preferredCurrency,
+        }
+      };
+    });
+
+    // Add to hotels groups
+    form.setValue('hotels.groups', hotelGroupEntries);
     
     // Enable hotels section in both form and store
     form.setValue('hotels.enabled', true);
@@ -127,7 +193,10 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
     setSelectedHotel(hotel);
     setSelectedRoomId(roomId);
     setIsSearchDialogOpen(false);
-    toast.success(`Selected ${hotel.name} - ${selectedRoom.name}`);
+    
+    const accommodationName = accommodationType === 'villa' ? 'Private Villa' : hotel.name;
+    const roomType = accommodationType === 'villa' ? 'Villa' : selectedRoom.name;
+    toast.success(`Selected ${accommodationName} - ${roomType} for ${groupsToAssign.length} group(s)`);
   };
 
   const handleSkipHotelSelection = (skip: boolean) => {
@@ -216,6 +285,176 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
         </CardHeader>
 
           <CardContent className="space-y-6">
+          {/* Accommodation Type Selection */}
+          <div className="space-y-4">
+            <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+              <Hotel className="h-4 w-4 text-[var(--primary)]" />
+              Accommodation Type
+            </Label>
+            <RadioGroup
+              value={accommodationType}
+              onValueChange={(value: 'hotel' | 'villa') => setAccommodationType(value)}
+              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              <div className={cn(
+                "relative flex cursor-pointer rounded-xl border-2 p-4 transition-all duration-200",
+                accommodationType === 'hotel'
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                  : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50"
+              )}>
+                <RadioGroupItem value="hotel" id="hotel" className="sr-only" />
+                <div className="flex items-center gap-3 w-full">
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center",
+                    accommodationType === 'hotel'
+                      ? "bg-[var(--primary)] text-white"
+                      : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                  )}>
+                    <Hotel className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-[var(--foreground)]">Hotel</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">
+                      Traditional hotel accommodation with individual rooms
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={cn(
+                "relative flex cursor-pointer rounded-xl border-2 p-4 transition-all duration-200",
+                accommodationType === 'villa'
+                  ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                  : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50"
+              )}>
+                <RadioGroupItem value="villa" id="villa" className="sr-only" />
+                <div className="flex items-center gap-3 w-full">
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center",
+                    accommodationType === 'villa'
+                      ? "bg-[var(--primary)] text-white"
+                      : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                  )}>
+                    <Home className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-[var(--foreground)]">Private Villa</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">
+                      Exclusive villa for all travelers to stay together
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {/* Group Assignment (only show if subgroups are enabled) */}
+          {useSubgroups && tripGroups.length > 0 && (
+            <div className="space-y-4">
+              <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <Group className="h-4 w-4 text-[var(--primary)]" />
+                Group Assignment
+              </Label>
+              <RadioGroup
+                value={groupAssignmentMode}
+                onValueChange={(value: 'together' | 'separate') => setGroupAssignmentMode(value)}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                <div className={cn(
+                  "relative flex cursor-pointer rounded-xl border-2 p-4 transition-all duration-200",
+                  groupAssignmentMode === 'together'
+                    ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                    : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50"
+                )}>
+                  <RadioGroupItem value="together" id="together" className="sr-only" />
+                  <div className="flex items-center gap-3 w-full">
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center",
+                      groupAssignmentMode === 'together'
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                    )}>
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-[var(--foreground)]">Stay Together</div>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        All groups share the same accommodation
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "relative flex cursor-pointer rounded-xl border-2 p-4 transition-all duration-200",
+                  groupAssignmentMode === 'separate'
+                    ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                    : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50"
+                )}>
+                  <RadioGroupItem value="separate" id="separate" className="sr-only" />
+                  <div className="flex items-center gap-3 w-full">
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center",
+                      groupAssignmentMode === 'separate'
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                    )}>
+                      <User className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-[var(--foreground)]">Separate Groups</div>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        Choose specific groups for this accommodation
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </RadioGroup>
+
+              {/* Group Selection (only show if separate mode is selected) */}
+              {groupAssignmentMode === 'separate' && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-[var(--foreground)]">
+                    Select Groups
+                  </Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {tripGroups.map((group) => (
+                      <div
+                        key={group.id}
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all duration-200",
+                          selectedGroups.includes(group.id)
+                            ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                            : "border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/50"
+                        )}
+                        onClick={() => {
+                          setSelectedGroups(prev => 
+                            prev.includes(group.id)
+                              ? prev.filter(id => id !== group.id)
+                              : [...prev, group.id]
+                          );
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedGroups.includes(group.id)}
+                          onChange={() => {}}
+                          className="h-4 w-4 text-[var(--primary)] rounded border-[var(--border)] focus:ring-[var(--primary)]/20"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-[var(--foreground)]">{group.name}</div>
+                          <div className="text-xs text-[var(--muted-foreground)]">
+                            {(group.adults || 0) + (group.children || 0)} travelers
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Search Parameters Display */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gradient-to-r from-[var(--muted)]/20 to-[var(--muted)]/10 rounded-2xl border border-[var(--muted)]/20">
             <div className="flex items-center gap-2">
@@ -243,13 +482,68 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
               <Users className="h-4 w-4 text-[var(--primary)]" />
               <div>
                 <div className="text-xs text-[var(--muted-foreground)]">Travelers</div>
-                <div className="text-sm font-medium">{adults + children} ({adults}A, {children}C)</div>
+                <div className="text-sm font-medium">
+                  {useSubgroups && tripGroups.length > 0 
+                    ? `${tripGroups.length} group(s)` 
+                    : `${adults + children} (${adults}A, ${children}C)`
+                  }
+                </div>
               </div>
             </div>
           </div>
 
+          {/* Accommodation Summary */}
+          {(accommodationType === 'villa' || (useSubgroups && tripGroups.length > 0)) && (
+            <div className="p-4 bg-gradient-to-r from-[var(--accent)]/20 to-[var(--accent)]/10 rounded-2xl border border-[var(--accent)]/20">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent)]/20 flex items-center justify-center">
+                  {accommodationType === 'villa' ? (
+                    <Home className="h-4 w-4 text-[var(--accent-foreground)]" />
+                  ) : (
+                    <Group className="h-4 w-4 text-[var(--accent-foreground)]" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[var(--accent-foreground)]">
+                    {accommodationType === 'villa' ? 'Villa Accommodation' : 'Group Assignment'}
+                  </div>
+                  <div className="text-xs text-[var(--muted-foreground)]">
+                    {accommodationType === 'villa' 
+                      ? 'All travelers will stay together in a private villa'
+                      : groupAssignmentMode === 'together'
+                        ? 'All groups will share the same accommodation'
+                        : 'Selected groups will have separate accommodations'
+                    }
+                  </div>
+                </div>
+              </div>
+              
+              {useSubgroups && tripGroups.length > 0 && groupAssignmentMode === 'separate' && (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-[var(--accent-foreground)]">Selected Groups:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedGroups.length > 0 ? (
+                      selectedGroups.map(groupId => {
+                        const group = tripGroups.find(g => g.id === groupId);
+                        const { adults, children } = calculateTotalTravelers([groupId]);
+                        const requiredRooms = calculateRequiredRooms([groupId]);
+                        return (
+                          <Badge key={groupId} variant="outline" className="text-xs bg-[var(--accent)]/20 text-[var(--accent-foreground)] border-[var(--accent)]/30">
+                            {group?.name} ({adults + children} travelers, {requiredRooms} room{requiredRooms > 1 ? 's' : ''})
+                          </Badge>
+                        );
+                      })
+                    ) : (
+                      <span className="text-xs text-[var(--muted-foreground)]">No groups selected</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Hotel Selection Options */}
-              <div className="space-y-4">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Hotel className="h-5 w-5 text-[var(--primary)]" />
@@ -265,7 +559,9 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
               <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <h4 className="font-semibold text-green-800">Hotel Selected</h4>
+                    <h4 className="font-semibold text-green-800">
+                      {accommodationType === 'villa' ? 'Villa' : 'Hotel'} Selected
+                    </h4>
                     <p className="text-sm text-green-700 mt-1">
                       {selectedHotelData.destinationCity} • {selectedHotelData.roomTypes.join(', ')} • {selectedHotelData.numberOfRooms} room(s)
                     </p>
@@ -276,12 +572,28 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
                         ))}
                       </div>
                     )}
+                    {/* Show group information */}
+                    {useSubgroups && tripGroups.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs text-green-600 font-medium">Assigned Groups:</div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {hotelGroups.map((hotelGroup, index) => {
+                            const group = tripGroups.find(g => g.id === hotelGroup.groupId);
+                            return (
+                              <Badge key={index} variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">
+                                {group?.name || hotelGroup.groupId}
+                              </Badge>
+                            );
+                          })}
                         </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
                       form.setValue('hotels.groups', []);
                       form.setValue('hotels.enabled', false);
                       setSelectedHotel(null);
@@ -290,7 +602,7 @@ export function Step4Hotels({ disabled = false }: Step4HotelsProps) {
                     className="text-red-600 border-red-200 hover:bg-red-50"
                   >
                     Remove
-                            </Button>
+                  </Button>
                 </div>
               </div>
             )}

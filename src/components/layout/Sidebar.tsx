@@ -25,6 +25,7 @@ import {
   CreditCard,
   BarChart3,
   Building2,
+  Package as PackageIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthProvider";
 import {
@@ -82,6 +83,11 @@ export function Sidebar({ collapsed = false, onCollapsedChange }: SidebarProps) 
       icon: Image,
       href: "/media-library",
       premium: true,
+    },
+    {
+      label: "Package Builder",
+      icon: PackageIcon,
+      href: "/package-builder",
     },
   ];
 

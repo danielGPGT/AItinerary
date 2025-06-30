@@ -11,4 +11,7 @@ export * from './mockHotelData';
 export * from './mockTransferData';
 
 // Insurance data
-export * from './mockInsuranceData'; 
+export * from './mockInsuranceData';
+
+// Event data
+export * from './mockEventData'; 
