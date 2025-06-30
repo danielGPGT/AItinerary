@@ -62,11 +62,11 @@ export function useGooglePlaces(inputRef: React.RefObject<HTMLInputElement | nul
     setAutocomplete(placeAutocomplete);
 
     return () => {
-      if (autocomplete) {
-        google.maps.event.clearInstanceListeners(autocomplete);
+      if (placeAutocomplete) {
+        google.maps.event.clearInstanceListeners(placeAutocomplete);
       }
     };
-  }, [inputRef.current]);
+  }, [inputRef]);
 
   return { place, autocomplete };
 } 

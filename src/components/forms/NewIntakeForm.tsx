@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,19 +8,17 @@ import { Progress } from '@/components/ui/progress';
 import { 
   ChevronLeft, 
   ChevronRight, 
-  Save, 
   Users, 
   Plane, 
   Hotel, 
   Car, 
   Calendar,
   CheckCircle,
-  Clock,
-  AlertCircle,
   FileText,
   Brain,
   Download,
-  MessageSquare
+  MessageSquare,
+  RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,10 +28,13 @@ import { StepClientSelection } from './steps/StepClientSelection';
 import { StepTripDetails } from './steps/StepTripDetails';
 import { StepPreferences } from './steps/StepPreferences';
 import { Step3Flights } from './steps/Step3Flights';
+import { Step4Hotels } from './steps/Step4Hotels';
+import { Step5Transfers } from './steps/Step5Transfers';
+import { Step6Events } from './steps/Step6Events';
+import { Step7Summary } from './steps/Step7Summary';
 
 interface NewIntakeFormProps {
   onSubmit?: (data: NewIntake) => void;
-  onSaveDraft?: (data: NewIntake) => void;
   onGenerateItinerary?: (data: NewIntake) => void;
   onExportPDF?: (data: NewIntake) => void;
   initialData?: Partial<NewIntake>;
@@ -52,28 +53,22 @@ const STEPS = [
 
 export function NewIntakeForm({ 
   onSubmit, 
-  onSaveDraft, 
   onGenerateItinerary, 
   onExportPDF,
   initialData 
 }: NewIntakeFormProps) {
   const {
-    intakeData,
     currentStep,
     isSubmitting,
-    lastSaved,
-    setIntakeData,
-    updateIntakeData,
     setCurrentStep,
-    saveDraft,
+    resetForm,
   } = useNewIntakeStore();
 
   const [showPreview, setShowPreview] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
 
   const form = useForm<NewIntake>({
     resolver: zodResolver(newIntakeSchema),
-    defaultValues: initialData || intakeData || {
+    defaultValues: initialData || {
       client: {
         firstName: '',
         lastName: '',
@@ -113,7 +108,7 @@ export function NewIntakeForm({
         tone: 'luxury',
         currency: 'GBP',
         budget: {
-          amount: undefined,
+          amount: 0,
           type: 'total',
         },
         language: 'en',
@@ -151,28 +146,6 @@ export function NewIntakeForm({
     mode: 'onChange',
   });
 
-  // Sync form data with store
-  useEffect(() => {
-    const subscription = form.watch((value) => {
-      if (value && Object.keys(value).length > 0) {
-        updateIntakeData(value as NewIntake);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [form, updateIntakeData]);
-
-  // Auto-save functionality
-  useEffect(() => {
-    if (autoSave && intakeData) {
-      const timeoutId = setTimeout(() => {
-        saveDraft();
-        toast.success('Draft saved automatically');
-      }, 30000); // Auto-save every 30 seconds
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [intakeData, autoSave, saveDraft]);
-
   const handleNext = async () => {
     // Define which fields to validate for each step
     const stepValidationFields = {
@@ -201,7 +174,6 @@ export function NewIntakeForm({
     
     if (isValid && currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
-      saveDraft();
     }
   };
 
@@ -213,9 +185,6 @@ export function NewIntakeForm({
 
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      setIntakeData(data);
-      saveDraft();
-      
       if (onSubmit) {
         await onSubmit(data);
       }
@@ -226,16 +195,6 @@ export function NewIntakeForm({
       toast.error('Failed to submit form. Please try again.');
     }
   });
-
-  const handleSaveDraft = () => {
-    const formData = form.getValues();
-    setIntakeData(formData);
-    saveDraft();
-    if (onSaveDraft) {
-      onSaveDraft(formData);
-    }
-    toast.success('Draft saved successfully!');
-  };
 
   const handleGenerateItinerary = () => {
     const formData = form.getValues();
@@ -251,6 +210,14 @@ export function NewIntakeForm({
     }
   };
 
+  const handleReset = () => {
+    if (window.confirm('Are you sure you want to reset the form? This will clear all data and return to step 1. This action cannot be undone.')) {
+      resetForm();
+      form.reset();
+      toast.success('Form reset successfully');
+    }
+  };
+
   const renderStep = () => {
     switch (currentStep) {
       case 0:
@@ -262,33 +229,16 @@ export function NewIntakeForm({
       case 3:
         return <Step3Flights />;
       case 4:
-        return (
-          <div className="p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2 text-[var(--foreground)]">Hotels</h3>
-            <p className="text-[var(--muted-foreground)]">Step component will be loaded here</p>
-          </div>
-        );
+        return <Step4Hotels />;
       case 5:
-        return (
-          <div className="p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2 text-[var(--foreground)]">Transfers</h3>
-            <p className="text-[var(--muted-foreground)]">Step component will be loaded here</p>
-          </div>
-        );
+        return <Step5Transfers />;
       case 6:
-        return (
-          <div className="p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2 text-[var(--foreground)]">Events</h3>
-            <p className="text-[var(--muted-foreground)]">Step component will be loaded here</p>
-          </div>
-        );
+        return <Step6Events />;
       case 7:
-        return (
-          <div className="p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2 text-[var(--foreground)]">Summary</h3>
-            <p className="text-[var(--muted-foreground)]">Step component will be loaded here</p>
-          </div>
-        );
+        return <Step7Summary 
+          onGenerateItinerary={handleGenerateItinerary}
+          onExportPDF={handleExportPDF}
+        />;
       default:
         return (
           <div className="p-6 text-center">
@@ -303,7 +253,7 @@ export function NewIntakeForm({
 
   return (
     <div className="w-full min-h-screen flex flex-col items-center justify-start bg-[var(--background)]">
-      <div className="w-full max-w-2xl mx-auto py-8 px-2 sm:px-4">
+      <div className="w-full max-w-4xl mx-auto py-8 px-2 sm:px-4">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[var(--foreground)] mb-1">New Travel Quote</h1>
@@ -375,12 +325,12 @@ export function NewIntakeForm({
             </Button>
             <Button
               variant="outline"
-              onClick={handleSaveDraft}
+              onClick={handleReset}
               disabled={isSubmitting}
-              className="border-[var(--border)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30"
+              className="border-[var(--border)] hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Draft
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset Form
             </Button>
           </div>
 

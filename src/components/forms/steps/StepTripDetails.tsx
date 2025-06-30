@@ -43,6 +43,8 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { NewIntake, TravelerGroup, TripPurpose } from '@/types/newIntake';
 import { useNewIntakeStore } from '@/store/newIntake';
+import { useGoogleMapsScript } from '@/hooks/useGoogleMapsScript';
+import { useGooglePlaces } from '@/hooks/useGooglePlaces';
 
 interface StepTripDetailsProps {
   disabled?: boolean;
@@ -262,6 +264,23 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
     setSelectedEndMonth(endDate);
   };
 
+  // Google Maps Autocomplete for Primary Destination (Step2Destinations pattern)
+  const primaryInputRef = useRef<HTMLInputElement>(null);
+  const { place: primaryPlace } = useGooglePlaces(primaryInputRef);
+  const { ref: primaryRegisterRef, ...primaryRegisterProps } = form.register('tripDetails.primaryDestination');
+
+  // Update form value when a place is selected
+  useEffect(() => {
+    if (primaryPlace) {
+      const locationString = [
+        primaryPlace.city,
+        primaryPlace.state,
+        primaryPlace.country
+      ].filter(Boolean).join(', ');
+      form.setValue('tripDetails.primaryDestination', locationString, { shouldValidate: true });
+    }
+  }, [primaryPlace]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -324,25 +343,23 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
               />
             </div>
 
-            {/* Destination Input */}
+            {/* Destination Input with Google Maps Autocomplete */}
             <div className="space-y-4">
               <Label htmlFor="primaryDestination" className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-[var(--primary)]" />
                 Primary Destination *
               </Label>
               <div className="relative">
-                <Controller
-                  name="tripDetails.primaryDestination"
-                  control={form.control}
-                  render={({ field }) => (
-                    <Input
-                      {...field}
-                      id="primaryDestination"
-                      placeholder="e.g., Paris, France or Tokyo, Japan"
-                      disabled={disabled}
-                      className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 pl-12 transition-all duration-200"
-                    />
-                  )}
+                <Input
+                  ref={e => {
+                    primaryInputRef.current = e;
+                    primaryRegisterRef(e);
+                  }}
+                  {...primaryRegisterProps}
+                  id="primaryDestination"
+                  placeholder="e.g., Paris, France or Tokyo, Japan"
+                  disabled={disabled}
+                  className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 pl-12 transition-all duration-200 w-full"
                 />
                 <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)]" />
               </div>

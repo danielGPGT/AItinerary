@@ -27,7 +27,7 @@ export class HubSpotService {
    * Get HubSpot OAuth URL for team connection
    */
   static getOAuthUrl(teamId: string, state: string): string {
-    const clientId = import.meta.env.VITE_HUBSPOT_CLIENT_ID;
+    const clientId = import.meta.env.VITE_HUBSPOT_CLIENT_ID || '0ae72dad-c2db-4167-8c98-735e668c56ab';
     const redirectUri = `${window.location.origin}/auth/callback`;
     const scopes = [
       'crm.objects.contacts.read',
@@ -91,7 +91,7 @@ export class HubSpotService {
    * Refresh access token
    */
   static async refreshToken(refreshToken: string): Promise<HubSpotTokenResponse> {
-    const clientId = import.meta.env.VITE_HUBSPOT_CLIENT_ID;
+    const clientId = import.meta.env.VITE_HUBSPOT_CLIENT_ID || '0ae72dad-c2db-4167-8c98-735e668c56ab';
     const clientSecret = import.meta.env.VITE_HUBSPOT_CLIENT_SECRET;
 
     const response = await fetch(`${this.HUBSPOT_OAUTH_BASE}/oauth/v1/token`, {
