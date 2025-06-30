@@ -60,6 +60,28 @@ export interface QuoteInput {
     currency: string;
     available: boolean;
   };
+  selectedFlights?: Array<{
+    originAirport: string;
+    destinationAirport: string;
+    cabinClass: string;
+    airline?: string;
+    flightNumber?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    total: number;
+    currency: string;
+  }>;
+  selectedHotels?: Array<{
+    hotelName: string;
+    destinationCity: string;
+    numberOfRooms: number;
+    roomTypes: string[];
+    starRating?: number;
+    pricePerNight: number;
+    currency: string;
+    checkIn?: string;
+    checkOut?: string;
+  }>;
   selectedHotel?: {
     hotel: {
       id: string;
@@ -182,6 +204,48 @@ export function createQuotePayload(formData: TripIntake): QuoteInput {
       price: selectedTicket.price,
       currency: selectedTicket.currency,
       available: selectedTicket.available,
+    } : undefined,
+    selectedFlights: (intakeData as any)?.selectedFlights,
+    selectedHotels: (intakeData as any)?.selectedHotels,
+    selectedHotel: (intakeData as any)?.selectedHotel ? {
+      hotel: {
+        id: (intakeData as any)?.selectedHotel.hotelId,
+        name: (intakeData as any)?.selectedHotel.hotelName,
+        rating: (intakeData as any)?.selectedHotel.starRating,
+        stars: (intakeData as any)?.selectedHotel.stars,
+        address: {
+          country: (intakeData as any)?.selectedHotel.country,
+          city: (intakeData as any)?.selectedHotel.city,
+          street: (intakeData as any)?.selectedHotel.street,
+          zip: (intakeData as any)?.selectedHotel.zip,
+        },
+        location: {
+          latitude: (intakeData as any)?.selectedHotel.latitude,
+          longitude: (intakeData as any)?.selectedHotel.longitude,
+        },
+        images: (intakeData as any)?.selectedHotel.images,
+        amenities: (intakeData as any)?.selectedHotel.amenities,
+        description: (intakeData as any)?.selectedHotel.description,
+      },
+      room: {
+        id: (intakeData as any)?.selectedHotel.roomId,
+        name: (intakeData as any)?.selectedHotel.roomName,
+        type: (intakeData as any)?.selectedHotel.roomType,
+        capacity: {
+          adults: (intakeData as any)?.selectedHotel.adults,
+          children: (intakeData as any)?.selectedHotel.children,
+        },
+        price: {
+          amount: (intakeData as any)?.selectedHotel.price,
+          currency: (intakeData as any)?.selectedHotel.currency,
+          originalAmount: (intakeData as any)?.selectedHotel.originalPrice,
+        },
+        cancellationPolicy: (intakeData as any)?.selectedHotel.cancellationPolicy,
+        boardType: (intakeData as any)?.selectedHotel.boardType,
+        refundable: (intakeData as any)?.selectedHotel.refundable,
+        available: (intakeData as any)?.selectedHotel.available,
+      },
+      selectedAt: (intakeData as any)?.selectedHotel.selectedAt,
     } : undefined,
     packageComponents: formData.packageComponents || undefined,
   };

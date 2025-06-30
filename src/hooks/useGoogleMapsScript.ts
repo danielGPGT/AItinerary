@@ -16,8 +16,12 @@ export function useGoogleMapsScript() {
 
   useEffect(() => {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    
+    console.log('useGoogleMapsScript - API key exists:', !!apiKey);
+    console.log('useGoogleMapsScript - API key length:', apiKey?.length || 0);
 
     if (!apiKey) {
+      console.log('useGoogleMapsScript - No API key found');
       setError('Google Maps API key is not defined');
       return;
     }

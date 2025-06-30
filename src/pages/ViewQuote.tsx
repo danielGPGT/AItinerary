@@ -24,7 +24,8 @@ import {
   Hotel,
   Utensils,
   Camera,
-  Ticket
+  Ticket,
+  Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -375,6 +376,65 @@ export default function ViewQuote() {
                     </div>
                   )}
 
+                  {/* Selected Flights */}
+                  {quote.selectedFlights && quote.selectedFlights.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Plane className="h-4 w-4" />
+                        Selected Flights
+                      </h4>
+                      <div className="bg-muted/50 p-3 rounded-lg">
+                        {quote.selectedFlights.map((flight, index) => (
+                          <div key={index} className="text-sm mb-3 last:mb-0">
+                            <div className="flex justify-between">
+                              <span className="font-medium">{flight.originAirport} → {flight.destinationAirport}</span>
+                              <span>{formatCurrency(flight.total, flight.currency)}</span>
+                            </div>
+                            <p className="text-muted-foreground">
+                              {flight.cabinClass} Class
+                              {flight.airline && ` • ${flight.airline}`}
+                              {flight.flightNumber && ` • Flight ${flight.flightNumber}`}
+                            </p>
+                            {flight.departureTime && flight.arrivalTime && (
+                              <p className="text-muted-foreground">
+                                {flight.departureTime} - {flight.arrivalTime}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selected Hotels */}
+                  {quote.selectedHotels && quote.selectedHotels.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        Selected Hotels
+                      </h4>
+                      <div className="bg-muted/50 p-3 rounded-lg">
+                        {quote.selectedHotels.map((hotel, index) => (
+                          <div key={index} className="text-sm mb-3 last:mb-0">
+                            <div className="flex justify-between">
+                              <span className="font-medium">{hotel.hotelName}</span>
+                              <span>{formatCurrency(hotel.pricePerNight, hotel.currency)}/night</span>
+                            </div>
+                            <p className="text-muted-foreground">
+                              {hotel.destinationCity}
+                              {hotel.starRating && ` • ${hotel.starRating}★`}
+                              {hotel.numberOfRooms > 1 && ` • ${hotel.numberOfRooms} rooms`}
+                            </p>
+                            <p className="text-muted-foreground">
+                              {hotel.roomTypes.join(', ')}
+                              {hotel.checkIn && hotel.checkOut && ` • ${hotel.checkIn} - ${hotel.checkOut}`}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Event Tickets */}
                   {quote.selectedEvent && quote.selectedTicket && (
                     <div>
@@ -398,7 +458,7 @@ export default function ViewQuote() {
                             {quote.selectedTicket.categoryName} • {formatDate(quote.selectedEvent.dateOfEvent)}
                           </p>
                           <p className="text-muted-foreground">
-                            {quote.selectedEvent.venue.name}, {quote.selectedEvent.venue.city}
+                            {quote.selectedEvent.venue?.name || 'Venue not specified'}, {quote.selectedEvent.venue?.city || 'Location not specified'}
                           </p>
                         </div>
                       </div>

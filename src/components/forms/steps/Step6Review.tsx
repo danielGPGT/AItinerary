@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar, MapPin, Users, DollarSign, Heart, Clock, Building, Star, Ticket, Mail, Phone, Home } from 'lucide-react';
 import { useIntakeStore } from '@/store/intake';
+import { formatCurrency } from '@/lib/utils';
 
 export function Step6Review() {
   const form = useFormContext();
@@ -260,7 +261,7 @@ export function Step6Review() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Budget Amount</p>
               <p className="font-semibold text-lg">
-                {formData.budget?.amount ? `${formData.budget.amount.toLocaleString()} ${formData.budget.currency}` : 'Not specified'}
+                {formData.budget?.amount ? formatCurrency(formData.budget.amount, formData.budget.currency) : 'Not specified'}
               </p>
             </div>
             <div>
@@ -313,7 +314,7 @@ export function Step6Review() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Price</p>
                     <p className="font-semibold">
-                      {selectedTicket.price ? `${selectedTicket.price} ${selectedTicket.currency}` : 'Price not available'}
+                      {selectedTicket.price ? formatCurrency(selectedTicket.price, selectedTicket.currency) : 'Price not available'}
                     </p>
                   </div>
                   <div>

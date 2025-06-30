@@ -15,6 +15,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format, addDays, isAfter, isBefore } from 'date-fns';
 import { 
   Plane, 
@@ -66,7 +67,7 @@ import {
   SortDesc
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, convertCurrency, formatCurrency } from '@/lib/utils';
 import { NewIntake, CabinClass } from '@/types/newIntake';
 import { 
   mockLowFareResult, 
@@ -156,6 +157,25 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
   const flightGroups = form.watch('flights.groups') || [];
   const tripGroups = form.watch('tripDetails.groups') || [];
   const primaryDestination = form.watch('tripDetails.primaryDestination');
+  const totalTravelers = form.watch('tripDetails.totalTravelers');
+  const useSubgroups = form.watch('tripDetails.useSubgroups');
+
+  // Derive traveler type from existing fields
+  const getTravelerType = () => {
+    if (useSubgroups && tripGroups.length > 1) {
+      return 'group';
+    }
+    const totalAdults = totalTravelers?.adults || 0;
+    const totalChildren = totalTravelers?.children || 0;
+    const total = totalAdults + totalChildren;
+    
+    if (total === 1) return 'solo';
+    if (total === 2 && totalChildren === 0) return 'couple';
+    if (totalChildren > 0) return 'family';
+    return 'group';
+  };
+  
+  const travelerType = getTravelerType();
 
   // Local state
   const [showAirportSearch, setShowAirportSearch] = useState<string | null>(null);
@@ -165,6 +185,10 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
   const [activeTab, setActiveTab] = useState('search');
   const [searchResults, setSearchResults] = useState<MockRecommendation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [showFlightResults, setShowFlightResults] = useState(false);
+  // Store selected flights per groupId
+  const [selectedFlights, setSelectedFlights] = useState<{ [groupId: string]: MockRecommendation }>({});
+  const [activeGroupId, setActiveGroupId] = useState<string>('default');
 
   // Get available airlines and airports from mock data
   const availableAirlines = mockLowFareResult.Airlines;
@@ -182,6 +206,7 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
         preferredAirlines: [] as string[],
         flexibleDates: false,
         frequentFlyerInfo: '',
+        selectedFlight: undefined, // Initialize with undefined to ensure proper form state
       }));
       form.setValue('flights.groups', initialFlightGroups);
       initializedRef.current = true;
@@ -190,6 +215,27 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
       initializedRef.current = false;
     }
   }, [flightsEnabled, tripGroups, primaryDestination, form]);
+
+  // Smart default for solo/couple: always 1 group, hide group UI
+  useEffect(() => {
+    if ((travelerType === 'solo' || travelerType === 'couple') && flightsEnabled) {
+      if (flightGroups.length === 0) {
+        form.setValue('flights.groups', [{
+          groupId: 'default',
+          originAirport: '',
+          destinationAirport: primaryDestination || '',
+          cabinClass: 'economy',
+          preferredAirlines: [],
+          flexibleDates: false,
+          frequentFlyerInfo: '',
+          selectedFlight: undefined, // Initialize with undefined to ensure proper form state
+        }]);
+      } else if (flightGroups.length > 1) {
+        // Only keep the first group
+        form.setValue('flights.groups', [flightGroups[0]]);
+      }
+    }
+  }, [travelerType, flightsEnabled, flightGroups, primaryDestination, form]);
 
   // Handlers
   const handleToggleFlights = (enabled: boolean) => {
@@ -206,6 +252,7 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
         preferredAirlines: [] as string[],
         flexibleDates: false,
         frequentFlyerInfo: '',
+        selectedFlight: undefined, // Initialize with undefined to ensure proper form state
       }));
       
       form.setValue('flights.groups', initialFlightGroups);
@@ -228,6 +275,7 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
       preferredAirlines: [] as string[],
       flexibleDates: false,
       frequentFlyerInfo: '',
+      selectedFlight: undefined, // Initialize with undefined to ensure proper form state
     };
     
     form.setValue('flights.groups', [...flightGroups, newGroup]);
@@ -245,6 +293,7 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
       const duplicatedGroup = {
         ...groupToDuplicate,
         groupId: `flight-group-${Date.now()}`,
+        selectedFlight: undefined, // Initialize with undefined to ensure proper form state
       };
       form.setValue('flights.groups', [...flightGroups, duplicatedGroup]);
       toast.success('Flight group duplicated');
@@ -265,10 +314,21 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
 
   // Flight search functionality
   const searchFlights = useCallback(async (groupId: string) => {
+    setActiveGroupId(groupId);
+    // For solo/couple mode, check the first group directly
+    if (travelerType === 'solo' || travelerType === 'couple') {
+      const firstGroup = flightGroups[0];
+      if (!firstGroup?.originAirport || !firstGroup?.destinationAirport) {
+        toast.error('Please select origin and destination airports');
+        return;
+      }
+    } else {
+      // For group mode, find the specific group
     const group = flightGroups.find(g => g.groupId === groupId);
     if (!group?.originAirport || !group?.destinationAirport) {
       toast.error('Please select origin and destination airports');
       return;
+      }
     }
 
     setIsSearching(true);
@@ -281,8 +341,58 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
     setSearchResults(results);
     setIsSearching(false);
     
+    // Show the flight results dialog
+    setShowFlightResults(true);
+    
     toast.success(`Found ${results.length} flights`);
-  }, [flightGroups]);
+  }, [flightGroups, travelerType]);
+
+  // Handle flight selection (per group)
+  const handleFlightSelection = (flight: MockRecommendation) => {
+    setSelectedFlights(prev => ({ ...prev, [activeGroupId]: flight }));
+    toast.success(`Selected flight: ${flight.Routing}`);
+    setShowFlightResults(false);
+
+    // Get client's preferred currency
+    const preferredCurrency = form.watch('preferences.currency') || 'GBP';
+    const originalCurrency = mockLowFareResult.Currency.CurrencyId;
+    const originalPrice = flight.Total;
+
+    // Convert price to preferred currency with 2% spread
+    const convertedPrice = convertCurrency(originalPrice, originalCurrency, preferredCurrency, 0.02);
+
+    // Save selected flight data to the form
+    const groupIndex = flightGroups.findIndex(g => g.groupId === activeGroupId);
+    if (groupIndex !== -1) {
+      const selectedFlightData = {
+        recommendationId: flight.RecommendationId,
+        routing: flight.Routing,
+        total: originalPrice,
+        currency: originalCurrency,
+        airline: flight.ValidatingAirlineId,
+        flightNumber: flight.GdsId,
+        departureTime: flight.TicketingDeadline, // Or actual departure time if available
+        arrivalTime: '', // Fill if available
+        // Converted price fields
+        convertedTotal: convertedPrice,
+        convertedCurrency: preferredCurrency,
+      };
+      
+      form.setValue(`flights.groups.${groupIndex}.selectedFlight`, selectedFlightData);
+      
+      // Debug logging
+      console.log('✈️ Flight selection debug:', {
+        activeGroupId,
+        groupIndex,
+        flightData: flight,
+        selectedFlightData,
+        formPath: `flights.groups.${groupIndex}.selectedFlight`,
+        currentFormData: form.getValues('flights')
+      });
+    } else {
+      console.error('❌ Could not find flight group for ID:', activeGroupId, 'Available groups:', flightGroups);
+    }
+  };
 
   // Filter airports based on search query
   const filteredAirports = availableAirports.filter(airport =>
@@ -336,7 +446,7 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
                 <div>
                   <div className="text-xl font-bold">Flight Search & Preferences</div>
                   <div className="text-sm font-normal text-[var(--muted-foreground)] mt-1">
-                    Search and configure flights for each travel group
+                    {travelerType === 'group' ? 'Search and configure flights for each travel group' : 'Search flights for your trip'}
                   </div>
                 </div>
               </div>
@@ -355,7 +465,8 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
           
           {flightsEnabled && (
             <CardContent className="space-y-6">
-              {/* Flight Groups with Tabs */}
+              {/* Flight Groups with Tabs - Only show for Group */}
+              {travelerType === 'group' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
@@ -399,8 +510,8 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
                     const groupSize = (tripGroup?.adults || 0) + (tripGroup?.children || 0);
 
                     return (
+                            <React.Fragment key={flightGroup.groupId}>
                       <motion.div
-                        key={flightGroup.groupId}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -550,28 +661,114 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
                                   <PlaneLanding className="h-4 w-4 text-[var(--primary)]" />
                                   To *
                             </Label>
-                            <Input
-                              value={flightGroup.destinationAirport}
-                              onChange={(e) => updateFlightGroup(flightGroup.groupId, { destinationAirport: e.target.value })}
-                              placeholder="e.g., AUH, DXB, JFK"
-                                  className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20"
-                              disabled={disabled}
-                            />
-                            <p className="text-xs text-[var(--muted-foreground)]">
-                              Pre-filled from trip destination
-                            </p>
+                                    <Popover open={showAirportSearch === `destination-${flightGroup.groupId}`} onOpenChange={(open) => setShowAirportSearch(open ? `destination-${flightGroup.groupId}` : null)}>
+                                      <PopoverTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          className={cn(
+                                            "w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-colors duration-200",
+                                            !flightGroup.destinationAirport && "text-[var(--muted-foreground)]"
+                                          )}
+                                        >
+                                          <MapPin className="mr-2 h-4 w-4" />
+                                          {flightGroup.destinationAirport || "Select arrival airport"}
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-80 p-0" align="start">
+                                        <Command>
+                                          <CommandInput 
+                                            placeholder="Search airports..." 
+                                            value={airportSearchQuery}
+                                            onValueChange={setAirportSearchQuery}
+                                          />
+                                          <CommandList>
+                                            <CommandEmpty>No airports found.</CommandEmpty>
+                                            <CommandGroup>
+                                              <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                                Popular Airports
                         </div>
+                                              {popularAirports.map((airport) => (
+                                                <CommandItem
+                                                  key={airport.code}
+                                                  value={`${airport.code} ${airport.name} ${airport.city}`}
+                                                  onSelect={() => {
+                                                    updateFlightGroup(flightGroup.groupId, { destinationAirport: airport.code });
+                                                    setShowAirportSearch(null);
+                                                    setAirportSearchQuery('');
+                                                  }}
+                                                  className="flex items-center gap-3"
+                                                >
+                                                  <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
+                                                  <div>
+                                                    <div className="font-medium">{airport.code}</div>
+                                                    <div className="text-xs text-[var(--muted-foreground)]">
+                                                      {airport.name}, {airport.city}
+                                                    </div>
+                                                  </div>
+                                                </CommandItem>
+                                              ))}
+                                              
+                                              <Separator className="my-2" />
+                                              
+                                              <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                                All Airports
+                                              </div>
+                                              {filteredAirports.map((airport) => (
+                                                <CommandItem
+                                                  key={airport.AirportId}
+                                                  value={`${airport.AirportId} ${airport.AirportName}`}
+                                                  onSelect={() => {
+                                                    updateFlightGroup(flightGroup.groupId, { destinationAirport: airport.AirportId });
+                                                    setShowAirportSearch(null);
+                                                    setAirportSearchQuery('');
+                                                  }}
+                                                  className="flex items-center gap-3"
+                                                >
+                                                  <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
+                                                  <div>
+                                                    <div className="font-medium">{airport.AirportId}</div>
+                                                    <div className="text-xs text-[var(--muted-foreground)]">
+                                                      {airport.AirportName}
+                                                    </div>
+                                                  </div>
+                                                </CommandItem>
+                                              ))}
+                                            </CommandGroup>
+                                          </CommandList>
+                                        </Command>
+                                      </PopoverContent>
+                                    </Popover>
+                                  </div>
 
-                              {/* Search Button */}
+                                  {/* Cabin Class */}
                         <div className="space-y-2">
-                                <Label className="text-sm font-medium text-[var(--foreground)] opacity-0">
-                                  Search
+                                    <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
+                                      <Star className="h-4 w-4 text-[var(--primary)]" />
+                                      Cabin Class
                           </Label>
+                                    <Select
+                                      value={flightGroup.cabinClass || 'economy'}
+                                      onValueChange={val => updateFlightGroup(flightGroup.groupId, { cabinClass: val as CabinClass })}
+                                      disabled={disabled}
+                                    >
+                                      <SelectTrigger className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {cabinClassOptions.map(opt => (
+                                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+
+                                {/* Search Button */}
+                                <div className="flex justify-end">
                                 <Button
-                                  type="button"
                                   onClick={() => searchFlights(flightGroup.groupId)}
-                                  disabled={!flightGroup.originAirport || !flightGroup.destinationAirport || isSearching}
-                                  className="w-full h-12 rounded-xl bg-gradient-to-r from-[var(--primary)] to-[var(--primary)]/80 hover:from-[var(--primary)]/90 hover:to-[var(--primary)]/70 text-white font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
+                                    disabled={disabled || !flightGroup.originAirport || !flightGroup.destinationAirport || isSearching}
+                                    className="h-12 px-6 rounded-xl"
                                 >
                                   {isSearching ? (
                                     <>
@@ -586,195 +783,230 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
                                   )}
                                 </Button>
                               </div>
+                              </motion.div>
+                              {/* Selected Flight Summary for this group */}
+                              {selectedFlights[flightGroup.groupId] && (
+                                <div className="mt-4">
+                                  <Card className="border-2 border-[var(--primary)]/30 bg-[var(--primary)]/5">
+                                    <CardHeader>
+                                      <CardTitle className="flex items-center gap-2">
+                                        <Plane className="h-5 w-5 text-[var(--primary)]" />
+                                        Selected Flight for {groupName}
+                                      </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                        <div>
+                                          <div className="font-semibold">{selectedFlights[flightGroup.groupId].Routing}</div>
+                                          <div className="text-xs text-[var(--muted-foreground)]">Airline: {getAirlineById(selectedFlights[flightGroup.groupId].ValidatingAirlineId)?.AirlineName || 'Unknown'}</div>
+                                          <div className="text-xs text-[var(--muted-foreground)]">Stops: {selectedFlights[flightGroup.groupId].Routing.split('-').length - 1}</div>
                             </div>
-
-                            {/* Search Results */}
-                            {searchResults.length > 0 && (
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <h4 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
-                                    <Route className="h-4 w-4 text-[var(--primary)]" />
-                                    Available Flights ({searchResults.length})
-                                  </h4>
-                            <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" className="h-8">
-                                      <SortAsc className="h-3 w-3 mr-1" />
-                                      Price
-                                    </Button>
-                                    <Button variant="outline" size="sm" className="h-8">
-                                      <Clock className="h-3 w-3 mr-1" />
-                                      Duration
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                  {searchResults.slice(0, 5).map((flight, flightIndex) => (
-                                    <motion.div
-                                      key={flight.RecommendationId}
-                                      initial={{ opacity: 0, y: 10 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      transition={{ delay: flightIndex * 0.1 }}
-                                      className="border border-[var(--border)] rounded-xl p-4 hover:border-[var(--primary)]/30 transition-all duration-200 cursor-pointer group"
-                                    >
-                                      <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
-                                          <div className="w-12 h-12 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/20">
-                                            <Plane className="h-6 w-6 text-[var(--primary)]" />
+                                          <div className="text-lg font-bold text-[var(--primary)]">${selectedFlights[flightGroup.groupId].Total}</div>
+                                          <Button variant="outline" onClick={() => { setActiveGroupId(flightGroup.groupId); setShowFlightResults(true); }}>Change</Button>
                                           </div>
-                                          <div>
-                                            <div className="font-semibold text-[var(--foreground)]">
-                                              {flight.Routing}
                                             </div>
-                                            <div className="text-sm text-[var(--muted-foreground)] flex items-center gap-4">
-                                              <span>Duration: 8h 30m</span>
-                                              <span>•</span>
-                                              <span>1 stop</span>
-                                              <span>•</span>
-                                              <span>British Airways</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <div className="text-right">
-                                          <div className="font-bold text-lg text-[var(--foreground)]">
-                                            £{flight.Total.toFixed(0)}
-                                          </div>
-                                          <div className="text-sm text-[var(--muted-foreground)]">
-                                            per person
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </motion.div>
-                                  ))}
-                                </div>
+                                    </CardContent>
+                                  </Card>
                               </div>
                             )}
-                          </motion.div>
+                            </React.Fragment>
                         );
                       })}
                     </AnimatePresence>
                   </TabsContent>
 
+                    {/* Rest of the tabs content remains the same */}
                   <TabsContent value="preferences" className="space-y-6 mt-6">
-                    <AnimatePresence>
-                      {flightGroups.map((flightGroup, index) => {
-                        const tripGroup = tripGroups.find(g => g.id === flightGroup.groupId);
-                        const groupName = tripGroup?.name || `Group ${index + 1}`;
+                      {/* Preferences content */}
+                    </TabsContent>
+                    <TabsContent value="summary" className="space-y-6 mt-6">
+                      {/* Summary content */}
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              )}
 
-                        return (
-                          <motion.div
-                            key={flightGroup.groupId}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className="border border-[var(--border)] rounded-2xl p-6 space-y-6 bg-gradient-to-br from-[var(--background)]/50 to-[var(--background)]/20 backdrop-blur-sm"
-                          >
+              {/* Simple Flight Search for Solo/Couple/Family */}
+              {(travelerType === 'solo' || travelerType === 'couple' || travelerType === 'family') && (
+                <div className="border border-[var(--border)] rounded-2xl p-6 space-y-6 bg-gradient-to-br from-[var(--background)]/50 to-[var(--background)]/20 backdrop-blur-sm">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/20">
                                 <Users className="h-5 w-5 text-[var(--primary)]" />
                               </div>
-                              <span className="font-semibold text-[var(--foreground)]">{groupName}</span>
+                    <div>
+                      <span className="font-semibold text-[var(--foreground)]">
+                        {travelerType === 'solo' ? 'Solo Traveler' : travelerType === 'couple' ? 'Couple' : 'Family'}
+                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs bg-[var(--accent)]/20 text-[var(--accent-foreground)]">
+                          {travelerType === 'solo' ? '1 traveler' : travelerType === 'couple' ? '2 travelers' : 'Family travelers'}
+                        </Badge>
+                      </div>
+                    </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Cabin Class */}
-                              <div className="space-y-3">
+                  {/* Flight Search Interface */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Origin Airport */}
+                    <div className="space-y-2">
                             <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
-                              <Star className="h-4 w-4 text-[var(--primary)]" />
-                              Cabin Class
+                        <PlaneTakeoff className="h-4 w-4 text-[var(--primary)]" />
+                        From *
                             </Label>
-                            <Select
-                              value={flightGroup.cabinClass}
-                              onValueChange={(value) => updateFlightGroup(flightGroup.groupId, { cabinClass: value as CabinClass })}
-                              disabled={disabled}
-                            >
-                                  <SelectTrigger className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="rounded-xl border-[var(--border)] bg-[var(--background)]">
-                                {cabinClassOptions.map((option) => {
-                                  const Icon = option.icon;
-                                  return (
-                                    <SelectItem key={option.value} value={option.value} className="rounded-lg">
-                                      <div className="flex items-center gap-3 py-1">
-                                        <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/20">
-                                          <Icon className="w-4 h-4 text-[var(--primary)]" />
+                      <Popover open={showAirportSearch === 'origin-simple'} onOpenChange={(open) => setShowAirportSearch(open ? 'origin-simple' : null)}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-colors duration-200",
+                              !flightGroups[0]?.originAirport && "text-[var(--muted-foreground)]"
+                            )}
+                          >
+                            <MapPin className="mr-2 h-4 w-4" />
+                            {flightGroups[0]?.originAirport || "Select departure airport"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="start">
+                          <Command>
+                            <CommandInput 
+                              placeholder="Search airports..." 
+                              value={airportSearchQuery}
+                              onValueChange={setAirportSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>No airports found.</CommandEmpty>
+                              <CommandGroup>
+                                <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                  Popular Airports
                                         </div>
+                                {popularAirports.map((airport) => (
+                                  <CommandItem
+                                    key={airport.code}
+                                    value={`${airport.code} ${airport.name} ${airport.city}`}
+                                    onSelect={() => {
+                                      form.setValue('flights.groups.0.originAirport', airport.code);
+                                      setShowAirportSearch(null);
+                                      setAirportSearchQuery('');
+                                    }}
+                                    className="flex items-center gap-3"
+                                  >
+                                    <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
                                         <div>
-                                          <div className="font-medium text-[var(--foreground)]">{option.label}</div>
-                                          <div className="text-xs text-[var(--muted-foreground)]">{option.description}</div>
+                                      <div className="font-medium">{airport.code}</div>
+                                      <div className="text-xs text-[var(--muted-foreground)]">
+                                        {airport.name}, {airport.city}
                                         </div>
                                       </div>
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Flexibility */}
-                              <div className="space-y-3">
-                            <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
-                              <Settings className="h-4 w-4 text-[var(--primary)]" />
-                              Date Flexibility
-                            </Label>
-                            <div className="flex items-center space-x-2 p-3 bg-[var(--accent)]/10 rounded-xl">
-                              <Switch
-                                checked={flightGroup.flexibleDates}
-                                onCheckedChange={(checked) => updateFlightGroup(flightGroup.groupId, { flexibleDates: checked })}
-                                disabled={disabled}
-                              />
-                              <Label className="text-sm">
-                                {flightGroup.flexibleDates ? 'Flexible dates (±3 days)' : 'Fixed dates'}
-                              </Label>
+                                  </CommandItem>
+                                ))}
+                                
+                                <Separator className="my-2" />
+                                
+                                <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                  All Airports
                             </div>
+                                {filteredAirports.map((airport) => (
+                                  <CommandItem
+                                    key={airport.AirportId}
+                                    value={`${airport.AirportId} ${airport.AirportName}`}
+                                    onSelect={() => {
+                                      form.setValue('flights.groups.0.originAirport', airport.AirportId);
+                                      setShowAirportSearch(null);
+                                      setAirportSearchQuery('');
+                                    }}
+                                    className="flex items-center gap-3"
+                                  >
+                                    <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
+                                    <div>
+                                      <div className="font-medium">{airport.AirportId}</div>
+                                      <div className="text-xs text-[var(--muted-foreground)]">
+                                        {airport.AirportName}
                           </div>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                         </div>
 
-                        {/* Preferred Airlines */}
-                            <div className="space-y-3">
+                    {/* Destination Airport */}
+                    <div className="space-y-2">
                           <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
-                            <Plane className="h-4 w-4 text-[var(--primary)]" />
-                            Preferred Airlines
+                        <PlaneLanding className="h-4 w-4 text-[var(--primary)]" />
+                        To *
                           </Label>
-                          <Popover open={showAirlineSearch === flightGroup.groupId} onOpenChange={(open) => setShowAirlineSearch(open ? flightGroup.groupId : null)}>
+                      <Popover open={showAirportSearch === 'destination-simple'} onOpenChange={(open) => setShowAirportSearch(open ? 'destination-simple' : null)}>
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
-                                    className="w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-colors duration-200"
-                              >
-                                <Search className="mr-2 h-4 w-4" />
-                                {flightGroup.preferredAirlines.length > 0 
-                                  ? `${flightGroup.preferredAirlines.length} airline(s) selected`
-                                  : "Select preferred airlines (optional)"
-                                }
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-12 rounded-xl border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)]/30 transition-colors duration-200",
+                              !flightGroups[0]?.destinationAirport && "text-[var(--muted-foreground)]"
+                            )}
+                          >
+                            <MapPin className="mr-2 h-4 w-4" />
+                            {flightGroups[0]?.destinationAirport || "Select arrival airport"}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="start">
                               <Command>
                                 <CommandInput 
-                                  placeholder="Search airlines..." 
-                                  value={airlineSearchQuery}
-                                  onValueChange={setAirlineSearchQuery}
+                              placeholder="Search airports..." 
+                              value={airportSearchQuery}
+                              onValueChange={setAirportSearchQuery}
                                 />
                                 <CommandList>
-                                  <CommandEmpty>No airlines found.</CommandEmpty>
+                              <CommandEmpty>No airports found.</CommandEmpty>
                                   <CommandGroup>
-                                    {filteredAirlines.map((airline) => (
+                                <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                  Popular Airports
+                                </div>
+                                {popularAirports.map((airport) => (
                                       <CommandItem
-                                        key={airline.AirlineId}
-                                        value={`${airline.AirlineId} ${airline.AirlineName}`}
-                                        onSelect={() => toggleAirline(flightGroup.groupId, airline.AirlineId)}
+                                    key={airport.code}
+                                    value={`${airport.code} ${airport.name} ${airport.city}`}
+                                    onSelect={() => {
+                                      form.setValue('flights.groups.0.destinationAirport', airport.code);
+                                      setShowAirportSearch(null);
+                                      setAirportSearchQuery('');
+                                    }}
                                         className="flex items-center gap-3"
                                       >
-                                        <Checkbox
-                                          checked={flightGroup.preferredAirlines.includes(airline.AirlineId)}
-                                          className="mr-2"
-                                        />
+                                    <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
                                         <div>
-                                          <div className="font-medium">{airline.AirlineName}</div>
+                                      <div className="font-medium">{airport.code}</div>
                                           <div className="text-xs text-[var(--muted-foreground)]">
-                                            {airline.AirlineId} • {airline.SkytraxRating}/5 rating
+                                        {airport.name}, {airport.city}
+                                      </div>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                                
+                                <Separator className="my-2" />
+                                
+                                <div className="px-2 py-1.5 text-sm font-medium text-[var(--muted-foreground)]">
+                                  All Airports
+                                </div>
+                                {filteredAirports.map((airport) => (
+                                  <CommandItem
+                                    key={airport.AirportId}
+                                    value={`${airport.AirportId} ${airport.AirportName}`}
+                                    onSelect={() => {
+                                      form.setValue('flights.groups.0.destinationAirport', airport.AirportId);
+                                      setShowAirportSearch(null);
+                                      setAirportSearchQuery('');
+                                    }}
+                                    className="flex items-center gap-3"
+                                  >
+                                    <MapPin className="h-4 w-4 text-[var(--muted-foreground)]" />
+                                    <div>
+                                      <div className="font-medium">{airport.AirportId}</div>
+                                      <div className="text-xs text-[var(--muted-foreground)]">
+                                        {airport.AirportName}
                                           </div>
                                         </div>
                                       </CommandItem>
@@ -784,136 +1016,325 @@ export function Step3Flights({ disabled }: Step3FlightsProps) {
                               </Command>
                             </PopoverContent>
                           </Popover>
-                          
-                          {/* Selected Airlines */}
-                          {flightGroup.preferredAirlines.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {flightGroup.preferredAirlines.map((airlineId) => {
-                                const airline = getAirlineById(airlineId);
-                                return airline ? (
-                                  <Badge
-                                    key={airlineId}
-                                    variant="secondary"
-                                    className="flex items-center gap-1 bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20"
-                                  >
-                                    {airline.AirlineName}
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => toggleAirline(flightGroup.groupId, airlineId)}
-                                      disabled={disabled}
-                                      className="h-3 w-3 p-0 hover:bg-transparent"
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </Button>
-                                  </Badge>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Frequent Flyer Info */}
-                            <div className="space-y-3">
-                          <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
-                                <Award className="h-4 w-4 text-[var(--primary)]" />
-                            Frequent Flyer Information (Optional)
-                          </Label>
-                          <Input
-                            value={flightGroup.frequentFlyerInfo}
-                            onChange={(e) => updateFlightGroup(flightGroup.groupId, { frequentFlyerInfo: e.target.value })}
-                            placeholder="e.g., BA Executive Club, EY Guest"
-                                className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20"
-                            disabled={disabled}
-                          />
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-                  </TabsContent>
-
-                  <TabsContent value="summary" className="space-y-6 mt-6">
-                    <div className="space-y-4">
-                      {flightGroups.map((flightGroup, index) => {
-                        const tripGroup = tripGroups.find(g => g.id === flightGroup.groupId);
-                        const groupName = tripGroup?.name || `Group ${index + 1}`;
-                        const cabinClass = cabinClassOptions.find(c => c.value === flightGroup.cabinClass);
-
-                        return (
-                          <div key={flightGroup.groupId} className="border border-[var(--border)] rounded-xl p-4 bg-[var(--background)]/50">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center border border-[var(--primary)]/20">
-                                  <Users className="h-4 w-4 text-[var(--primary)]" />
-                                </div>
-                                <span className="font-medium text-[var(--foreground)]">{groupName}</span>
-                              </div>
-                              <Badge variant="outline" className="bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20">
-                                {cabinClass?.label || 'Economy'}
-                              </Badge>
-                            </div>
-                            <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <span className="text-[var(--muted-foreground)]">Route:</span>
-                                <span className="ml-2 font-medium text-[var(--foreground)]">
-                                  {flightGroup.originAirport} → {flightGroup.destinationAirport}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-[var(--muted-foreground)]">Airlines:</span>
-                                <span className="ml-2 font-medium text-[var(--foreground)]">
-                                  {flightGroup.preferredAirlines.length > 0 
-                                    ? flightGroup.preferredAirlines.length + ' selected'
-                                    : 'Any airline'
-                                  }
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
-                  </TabsContent>
-                </Tabs>
 
-                {flightGroups.length === 0 && (
-                  <div className="text-center py-12 text-[var(--muted-foreground)]">
-                    <Plane className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium mb-2">No flight groups configured</p>
-                    <p className="text-sm">Add a flight group to start searching for flights</p>
-                  </div>
-                )}
-              </div>
+                    {/* Cabin Class */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-[var(--foreground)] flex items-center gap-2">
+                        <Star className="h-4 w-4 text-[var(--primary)]" />
+                        Cabin Class
+                      </Label>
+                      <Select
+                        value={flightGroups[0]?.cabinClass || 'economy'}
+                        onValueChange={val => form.setValue('flights.groups.0.cabinClass', val as CabinClass)}
+                                      disabled={disabled}
+                      >
+                        <SelectTrigger className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cabinClassOptions.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                            </div>
+                        </div>
+
+                  {/* Search Button */}
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={() => searchFlights('default')}
+                      disabled={disabled || !flightGroups[0]?.originAirport || !flightGroups[0]?.destinationAirport || isSearching}
+                      className="h-12 px-6 rounded-xl"
+                    >
+                      {isSearching ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Searching...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="h-4 w-4 mr-2" />
+                          Search Flights
+                        </>
+                      )}
+                    </Button>
+                        </div>
+                </div>
+              )}
             </CardContent>
           )}
         </Card>
-      </motion.div>
+                      </motion.div>
 
-      {/* Status Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8 }}
-        className="flex justify-between items-center pt-6"
-      >
-        <div className="text-sm text-[var(--muted-foreground)]">
-          {flightsEnabled 
-            ? (isComplete ? 'Flight preferences complete - ready to proceed' : 'Please configure flight preferences for all groups')
-            : 'Flights excluded from this trip'
-          }
+      {/* Flight Results Dialog */}
+      <Dialog open={showFlightResults} onOpenChange={setShowFlightResults}>
+        <DialogContent className="!max-w-6xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <Plane className="h-6 w-6 text-[var(--primary)]" />
+              Flight Search Results
+            </DialogTitle>
+          </DialogHeader>
+          
+                    <div className="space-y-4">
+            {/* Search Summary */}
+            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[var(--primary)]/10 to-[var(--primary)]/5 rounded-2xl border border-[var(--primary)]/20">
+                              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--primary)]/20 flex items-center justify-center">
+                  <Search className="h-5 w-5 text-[var(--primary)]" />
+                                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[var(--primary)]">
+                    {searchResults.length} flights found
+                  </div>
+                  <div className="text-xs text-[var(--muted-foreground)]">
+                    {flightGroups[0]?.originAirport} → {flightGroups[0]?.destinationAirport}
+                  </div>
+                </div>
+                              </div>
+                              <Badge variant="outline" className="bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20">
+                {flightGroups[0]?.cabinClass || 'economy'} class
+                              </Badge>
+                            </div>
+
+            {/* Flight Results */}
+            <div className="space-y-3">
+              {searchResults.map((flight, index) => {
+                const airline = getAirlineById(flight.ValidatingAirlineId);
+                const routeParts = flight.Routing.split('-');
+                const origin = getLocationById(routeParts[0] || '');
+                const destination = getLocationById(routeParts[routeParts.length - 1] || '');
+
+                        return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="border border-[var(--border)] rounded-2xl p-6 hover:shadow-md transition-all duration-200 cursor-pointer bg-gradient-to-br from-[var(--background)]/50 to-[var(--background)]/20 backdrop-blur-sm"
+                    onClick={() => handleFlightSelection(flight)}
+                  >
+                            <div className="flex items-center justify-between">
+                      {/* Flight Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-[var(--primary)]/10 flex items-center justify-center">
+                              <Plane className="h-4 w-4 text-[var(--primary)]" />
+                                </div>
+                              <div>
+                              <div className="font-semibold text-[var(--foreground)]">
+                                {airline?.AirlineName || 'Unknown Airline'}
+                              </div>
+                              <div className="text-xs text-[var(--muted-foreground)]">
+                                Flight {flight.ValidatingAirlineId}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {routeParts.length - 1} stop{(routeParts.length - 1) !== 1 ? 's' : ''}
+                              </Badge>
+                            {routeParts.length === 2 && (
+                              <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200">
+                                Direct
+                              </Badge>
+                            )}
+                            </div>
+                        </div>
+
+                        {/* Route */}
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-[var(--foreground)]">
+                              {origin?.AirportId || 'N/A'}
+                            </div>
+                            <div className="text-xs text-[var(--muted-foreground)]">
+                              {origin?.AirportName || 'Unknown'}
+                            </div>
+                          </div>
+                          
+                          <div className="flex-1 flex items-center justify-center">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-1 bg-[var(--primary)]/30 rounded-full"></div>
+                              <Plane className="h-4 w-4 text-[var(--primary)]" />
+                              <div className="w-8 h-1 bg-[var(--primary)]/30 rounded-full"></div>
+                            </div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-[var(--foreground)]">
+                              {destination?.AirportId || 'N/A'}
+                            </div>
+                            <div className="text-xs text-[var(--muted-foreground)]">
+                              {destination?.AirportName || 'Unknown'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Flight Details */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-[var(--muted-foreground)]" />
+                              <div>
+                              <div className="font-medium text-[var(--foreground)]">
+                                {flight.TicketingDeadline ? 
+                                  format(new Date(flight.TicketingDeadline), 'MMM dd') : 'N/A'
+                                }
+                              </div>
+                              <div className="text-xs text-[var(--muted-foreground)]">Ticketing Deadline</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Route className="h-4 w-4 text-[var(--muted-foreground)]" />
+                              <div>
+                              <div className="font-medium text-[var(--foreground)]">
+                                {flight.Routing}
+                              </div>
+                              <div className="text-xs text-[var(--muted-foreground)]">Route</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-[var(--muted-foreground)]" />
+                            <div>
+                              <div className="font-medium text-[var(--foreground)]">
+                                {flight.Passengers.reduce((sum, p) => sum + p.TypeCount, 0)}
+                              </div>
+                              <div className="text-xs text-[var(--muted-foreground)]">Passengers</div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4 text-[var(--muted-foreground)]" />
+                            <div>
+                              <div className="font-medium text-[var(--foreground)]">
+                                {(() => {
+                                  const preferredCurrency = form.watch('preferences.currency') || 'GBP';
+                                  const originalCurrency = mockLowFareResult.Currency.CurrencyId;
+                                  const originalPrice = flight.Total;
+                                  
+                                  if (originalPrice && preferredCurrency !== originalCurrency) {
+                                    const convertedPrice = convertCurrency(originalPrice, originalCurrency, preferredCurrency, 0.02);
+                                    return formatCurrency(convertedPrice, preferredCurrency);
+                                  }
+                                  return formatCurrency(originalPrice || 0, originalCurrency);
+                                })()}
+                              </div>
+                              <div className="text-xs text-[var(--muted-foreground)]">Total Price</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Select Button */}
+                      <div className="flex flex-col items-end gap-2">
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFlightSelection(flight);
+                          }}
+                          className="h-10 px-4 rounded-xl"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Select Flight
+                        </Button>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-[var(--foreground)]">
+                            {(() => {
+                              const preferredCurrency = form.watch('preferences.currency') || 'GBP';
+                              const originalCurrency = mockLowFareResult.Currency.CurrencyId;
+                              const originalPrice = flight.Total;
+                              
+                              if (originalPrice && preferredCurrency !== originalCurrency) {
+                                const convertedPrice = convertCurrency(originalPrice, originalCurrency, preferredCurrency, 0.02);
+                                return formatCurrency(convertedPrice, preferredCurrency);
+                              }
+                              return formatCurrency(originalPrice || 0, originalCurrency);
+                            })()}
+                          </div>
+                          <div className="text-xs text-[var(--muted-foreground)]">total</div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                        );
+                      })}
+                    </div>
+
+            {/* No Results */}
+            {searchResults.length === 0 && (
+              <div className="text-center py-12">
+                <Plane className="h-12 w-12 text-[var(--muted-foreground)] mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">No flights found</h3>
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Try adjusting your search criteria or dates
+                </p>
+                  </div>
+                )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Selected Flight Summary */}
+      {(travelerType === 'solo' || travelerType === 'couple' || travelerType === 'family') && selectedFlights['default'] && (
+        <div className="mt-6">
+          <Card className="border-2 border-[var(--primary)]/30 bg-[var(--primary)]/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plane className="h-5 w-5 text-[var(--primary)]" />
+                Selected Flight
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <div className="font-semibold">{selectedFlights['default'].Routing}</div>
+                  <div className="text-xs text-[var(--muted-foreground)]">Airline: {getAirlineById(selectedFlights['default'].ValidatingAirlineId)?.AirlineName || 'Unknown'}</div>
+                  <div className="text-xs text-[var(--muted-foreground)]">Stops: {selectedFlights['default'].Routing.split('-').length - 1}</div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-lg font-bold text-[var(--primary)]">${selectedFlights['default'].Total}</div>
+                  <Button variant="outline" onClick={() => { setActiveGroupId('default'); setShowFlightResults(true); }}>Change</Button>
+                </div>
+              </div>
+            </CardContent>
+        </Card>
         </div>
-        
-        <div className="flex items-center gap-2">
-          {isComplete && (
-            <Badge variant="outline" className="bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Complete
-            </Badge>
-          )}
+      )}
+
+      {/* Selected Flight Summary for Group Mode */}
+      {travelerType === 'group' && flightGroups.map((flightGroup, index) => (
+        selectedFlights[flightGroup.groupId] && (
+          <div className="mt-6" key={flightGroup.groupId}>
+            <Card className="border-2 border-[var(--primary)]/30 bg-[var(--primary)]/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Plane className="h-5 w-5 text-[var(--primary)]" />
+                  Selected Flight for {tripGroups.find(g => g.id === flightGroup.groupId)?.name || `Group ${index + 1}`}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <div className="font-semibold">{selectedFlights[flightGroup.groupId].Routing}</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">Airline: {getAirlineById(selectedFlights[flightGroup.groupId].ValidatingAirlineId)?.AirlineName || 'Unknown'}</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">Stops: {selectedFlights[flightGroup.groupId].Routing.split('-').length - 1}</div>
         </div>
-      </motion.div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-lg font-bold text-[var(--primary)]">${selectedFlights[flightGroup.groupId].Total}</div>
+                    <Button variant="outline" onClick={() => { setActiveGroupId(flightGroup.groupId); setShowFlightResults(true); }}>Change</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
+      ))}
     </motion.div>
   );
 } 

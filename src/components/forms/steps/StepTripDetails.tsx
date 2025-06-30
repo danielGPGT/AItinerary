@@ -95,6 +95,10 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
   const form = useFormContext<NewIntake>();
   const { addGroup, updateGroup, removeGroup, duplicateGroup } = useNewIntakeStore();
   
+  // Debug logging
+  console.log('StepTripDetails - disabled prop:', disabled);
+  console.log('StepTripDetails - window.google?.maps?.places:', !!window.google?.maps?.places);
+  
   // Add error boundary
   if (!form) {
     console.error('Form context not found');
@@ -264,7 +268,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
     setSelectedEndMonth(endDate);
   };
 
-  // Google Maps Autocomplete for Primary Destination (Step2Destinations pattern)
+  // Google Maps Autocomplete for Primary Destination (Step2Destinations pattern, but for tripDetails.primaryDestination)
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const { place: primaryPlace } = useGooglePlaces(primaryInputRef);
   const { ref: primaryRegisterRef, ...primaryRegisterProps } = form.register('tripDetails.primaryDestination');
@@ -356,10 +360,9 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
                     primaryRegisterRef(e);
                   }}
                   {...primaryRegisterProps}
-                  id="primaryDestination"
-                  placeholder="e.g., Paris, France or Tokyo, Japan"
+                  placeholder="e.g. Paris, France"
                   disabled={disabled}
-                  className="h-12 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20 pl-12 transition-all duration-200 w-full"
+                  className="pl-10 h-11 rounded-xl border-[var(--border)] bg-[var(--background)] focus:border-[var(--primary)] focus:ring-[var(--primary)]/20"
                 />
                 <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)]" />
               </div>
@@ -671,7 +674,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
             {/* Traveler Count Inputs */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <Label htmlFor="adults" className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                   <Users className="h-4 w-4 text-[var(--primary)]" />
                   Adults *
                 </Label>
@@ -737,7 +740,7 @@ export function StepTripDetails({ disabled }: StepTripDetailsProps) {
               </div>
 
               <div className="space-y-4">
-                <Label htmlFor="children" className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <Label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
                   <Users className="h-4 w-4 text-[var(--secondary)]" />
                   Children
                 </Label>

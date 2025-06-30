@@ -310,3 +310,9 @@
   width: 100vw !important;
   min-width: 0 !important;
 }
+
+/* Google Places Autocomplete fix */
+.pac-container {
+  z-index: 99999 !important;
+  position: absolute !important;
+}

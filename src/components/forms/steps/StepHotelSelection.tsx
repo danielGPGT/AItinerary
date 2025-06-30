@@ -39,6 +39,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '@/components/ui/carousel';
+import { formatCurrency } from '@/lib/utils';
 
 interface StepHotelSelectionProps {
   shouldSearch?: boolean;
@@ -312,10 +313,7 @@ export function StepHotelSelection({ shouldSearch = false, onSearchComplete }: S
   };
 
   const formatPrice = (amount: number, currency: string) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount);
+    return formatCurrency(amount, currency);
   };
 
   const renderStars = (stars: number) => {

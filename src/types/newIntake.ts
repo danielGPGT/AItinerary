@@ -92,6 +92,20 @@ export const flightSectionSchema = z.object({
     preferredAirlines: z.array(z.string()).default([]),
     flexibleDates: z.boolean().default(false),
     frequentFlyerInfo: z.string().optional(),
+    // Selected flight data
+    selectedFlight: z.object({
+      recommendationId: z.string().optional(),
+      routing: z.string().optional(),
+      total: z.number().optional(),
+      currency: z.string().optional(),
+      airline: z.string().optional(),
+      flightNumber: z.string().optional(),
+      departureTime: z.string().optional(),
+      arrivalTime: z.string().optional(),
+      // Converted price fields
+      convertedTotal: z.number().optional(),
+      convertedCurrency: z.string().optional(),
+    }).optional(),
   })),
 });
 
@@ -106,6 +120,19 @@ export const hotelSectionSchema = z.object({
     starRating: z.number().min(1).max(5).optional(),
     amenities: z.array(z.string()).default([]),
     useSameHotelAs: z.string().optional(),
+    // Selected hotel data
+    selectedHotel: z.object({
+      hotelId: z.string().optional(),
+      hotelName: z.string().optional(),
+      pricePerNight: z.number().optional(),
+      currency: z.string().optional(),
+      roomType: z.string().optional(),
+      checkIn: z.string().optional(),
+      checkOut: z.string().optional(),
+      // Converted price fields
+      convertedPricePerNight: z.number().optional(),
+      convertedCurrency: z.string().optional(),
+    }).optional(),
   })),
 });
 
@@ -137,6 +164,21 @@ export const eventSectionSchema = z.object({
       tickets: z.number().min(1, 'Number of tickets is required'),
       seatPreference: seatPreferenceEnum.default('general'),
       addOns: z.array(z.string()).default([]),
+      ticketDetails: z.object({
+        categoryName: z.string().optional(),
+        categoryMain: z.string().optional(),
+        categorySecondary: z.string().optional(),
+        price: z.number().optional(),
+        currency: z.string().optional(),
+        availableQuantity: z.number().optional(),
+        immediateConfirmation: z.boolean().optional(),
+        restrictions: z.array(z.string()).optional(),
+        importantNotes: z.string().optional(),
+        purchaseAlert: z.string().optional(),
+        // Converted price fields
+        convertedPrice: z.number().optional(),
+        convertedCurrency: z.string().optional(),
+      }).optional(),
     })),
   })),
 });

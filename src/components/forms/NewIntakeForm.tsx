@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 
 import { newIntakeSchema, NewIntake } from '@/types/newIntake';
 import { useNewIntakeStore } from '@/store/newIntake';
+import { useGoogleMapsScript } from '@/hooks/useGoogleMapsScript';
 import { StepClientSelection } from './steps/StepClientSelection';
 import { StepTripDetails } from './steps/StepTripDetails';
 import { StepPreferences } from './steps/StepPreferences';
@@ -64,6 +65,7 @@ export function NewIntakeForm({
     resetForm,
   } = useNewIntakeStore();
 
+  const { isLoaded, error } = useGoogleMapsScript();
   const [showPreview, setShowPreview] = useState(false);
 
   const form = useForm<NewIntake>({
@@ -223,7 +225,7 @@ export function NewIntakeForm({
       case 0:
         return <StepClientSelection />;
       case 1:
-        return <StepTripDetails />;
+        return <StepTripDetails disabled={!isLoaded} />;
       case 2:
         return <StepPreferences />;
       case 3:
@@ -251,132 +253,30 @@ export function NewIntakeForm({
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
-  return (
-    <div className="w-full min-h-screen flex flex-col items-center justify-start bg-[var(--background)]">
-      <div className="w-full max-w-4xl mx-auto py-8 px-2 sm:px-4">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-1">New Travel Quote</h1>
-          <p className="text-[var(--muted-foreground)] text-base mb-2">Create a comprehensive travel quote for your client</p>
-          {/* Progress Bar */}
-          <div className="mb-4">
-            <Progress value={progress} className="h-2" />
-            <div className="flex justify-between text-xs text-[var(--muted-foreground)] mt-1">
-              <span>Step {currentStep + 1} of {STEPS.length}</span>
-              <span>{Math.round(progress)}% complete</span>
-            </div>
-          </div>
-          {/* Stepper */}
-          <div className="flex flex-wrap gap-2 mb-2">
-            {STEPS.map((step, index) => {
-              const IconComponent = step.icon;
-              return (
-                <div
-                  key={step.id}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border transition-colors ${
-                    index === currentStep
-                      ? 'bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]'
-                      : index < currentStep
-                      ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-[var(--primary-200)]'
-                      : 'bg-[var(--muted)] text-[var(--muted-foreground)] border-[var(--border)]'
-                  }`}
-                >
-                  <IconComponent className="w-4 h-4" />
-                  <span className="hidden sm:inline">{step.title}</span>
-                  {index < currentStep && <CheckCircle className="w-4 h-4 ml-1" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Main Form Card */}
-        <Card className="shadow-lg border-[var(--border)] bg-[var(--card)]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg text-[var(--card-foreground)]">
-              {(() => {
-                const IconComponent = STEPS[currentStep].icon;
-                return <IconComponent className="w-5 h-5" />;
-              })()}
-              {STEPS[currentStep].title}
-            </CardTitle>
-            <p className="text-[var(--muted-foreground)] text-sm">{STEPS[currentStep].description}</p>
-          </CardHeader>
-          <CardContent>
-            <FormProvider {...form}>
-              <div className="transition-all duration-300 space-y-6">
-                {renderStep()}
-              </div>
-            </FormProvider>
+  // Handle Google Maps loading error
+  if (error) {
+    return (
+      <div className="w-full min-h-screen flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold mb-2 text-red-600">Google Maps Error</h3>
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Please check your internet connection and try refreshing the page.
+            </p>
           </CardContent>
         </Card>
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-6">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handlePrev}
-              disabled={currentStep === 0}
-              className="border-[var(--border)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30"
-            >
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              disabled={isSubmitting}
-              className="border-[var(--border)] hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset Form
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {currentStep === STEPS.length - 1 ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={handleGenerateItinerary}
-                  disabled={isSubmitting}
-                  className="border-[var(--border)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30"
-                >
-                  <Brain className="w-4 h-4 mr-2" />
-                  Generate AI Itinerary
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleExportPDF}
-                  disabled={isSubmitting}
-                  className="border-[var(--border)] hover:bg-[var(--accent)] hover:border-[var(--primary)]/30"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting}
-                  className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)]"
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Submit Quote
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={handleNext}
-                disabled={isSubmitting}
-                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)]"
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      <FormProvider {...form}>
+        <div className="transition-all duration-300 space-y-6">
+          {renderStep()}
+        </div>
+      </FormProvider>
     </div>
   );
 } 

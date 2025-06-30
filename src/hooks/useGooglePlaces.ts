@@ -20,13 +20,21 @@ interface PlaceDetails {
   state?: string;
 }
 
-export function useGooglePlaces(inputRef: React.RefObject<HTMLInputElement | null>) {
+export function useGooglePlaces(inputRef: React.RefObject<HTMLInputElement | null> | null) {
   const [place, setPlace] = useState<PlaceDetails | null>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
 
   useEffect(() => {
-    if (!inputRef.current || !window.google?.maps?.places) return;
+    console.log('useGooglePlaces - inputRef:', !!inputRef);
+    console.log('useGooglePlaces - inputRef.current:', !!inputRef?.current);
+    console.log('useGooglePlaces - window.google?.maps?.places:', !!window.google?.maps?.places);
+    
+    if (!inputRef || !inputRef.current || !window.google?.maps?.places) {
+      console.log('useGooglePlaces - early return, missing requirements');
+      return;
+    }
 
+    console.log('useGooglePlaces - creating autocomplete');
     const placeAutocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
       types: ['(cities)'],
       fields: ['name', 'formatted_address', 'address_components'],

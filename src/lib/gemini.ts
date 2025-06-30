@@ -24,6 +24,46 @@ export interface TripPreferences {
   transportType?: string;
   fromLocation?: string;
   travelType?: string;
+  // Selected components from new intake form
+  selectedFlights?: Array<{
+    originAirport: string;
+    destinationAirport: string;
+    cabinClass: string;
+    airline?: string;
+    flightNumber?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    total: number;
+    currency: string;
+  }>;
+  selectedHotels?: Array<{
+    hotelName: string;
+    destinationCity: string;
+    numberOfRooms: number;
+    roomTypes: string[];
+    starRating?: number;
+    pricePerNight: number;
+    currency: string;
+    checkIn?: string;
+    checkOut?: string;
+  }>;
+  selectedEvent?: {
+    id: string;
+    name: string;
+    dateOfEvent: string;
+    venue: {
+      name: string;
+      city: string;
+      country: string;
+    };
+  };
+  selectedTicket?: {
+    id: string;
+    categoryName: string;
+    price: number;
+    currency: string;
+    available: boolean;
+  };
 }
 
 export interface ItineraryDay {
@@ -289,7 +329,56 @@ class GeminiService {
       isEventTrip,
       specialRequestsLower: preferences.specialRequests?.toLowerCase()
     });
+
+    // Build selected components information
+    let selectedComponentsInfo = '';
+    let selectedComponentsCost = 0;
     
+    if (preferences.selectedFlights && preferences.selectedFlights.length > 0) {
+      selectedComponentsInfo += '\n\nSELECTED FLIGHTS (ALREADY BOOKED):\n';
+      preferences.selectedFlights.forEach((flight, index) => {
+        selectedComponentsInfo += `${index + 1}. ${flight.originAirport} → ${flight.destinationAirport}\n`;
+        selectedComponentsInfo += `   - Class: ${flight.cabinClass}\n`;
+        if (flight.airline) selectedComponentsInfo += `   - Airline: ${flight.airline}\n`;
+        if (flight.flightNumber) selectedComponentsInfo += `   - Flight: ${flight.flightNumber}\n`;
+        if (flight.departureTime) selectedComponentsInfo += `   - Departure: ${flight.departureTime}\n`;
+        if (flight.arrivalTime) selectedComponentsInfo += `   - Arrival: ${flight.arrivalTime}\n`;
+        selectedComponentsInfo += `   - Price: ${flight.total} ${flight.currency}\n`;
+        selectedComponentsCost += flight.total;
+      });
+    }
+
+    if (preferences.selectedHotels && preferences.selectedHotels.length > 0) {
+      selectedComponentsInfo += '\n\nSELECTED HOTELS (ALREADY BOOKED):\n';
+      preferences.selectedHotels.forEach((hotel, index) => {
+        selectedComponentsInfo += `${index + 1}. ${hotel.hotelName}\n`;
+        selectedComponentsInfo += `   - Location: ${hotel.destinationCity}\n`;
+        selectedComponentsInfo += `   - Rooms: ${hotel.numberOfRooms}\n`;
+        selectedComponentsInfo += `   - Room Types: ${hotel.roomTypes.join(', ')}\n`;
+        if (hotel.starRating) selectedComponentsInfo += `   - Rating: ${hotel.starRating}★\n`;
+        selectedComponentsInfo += `   - Price per Night: ${hotel.pricePerNight} ${hotel.currency}\n`;
+        if (hotel.checkIn) selectedComponentsInfo += `   - Check-in: ${hotel.checkIn}\n`;
+        if (hotel.checkOut) selectedComponentsInfo += `   - Check-out: ${hotel.checkOut}\n`;
+        // Calculate total hotel cost for the trip duration
+        const tripDuration = Math.ceil((new Date(preferences.endDate).getTime() - new Date(preferences.startDate).getTime()) / (1000 * 60 * 60 * 24));
+        selectedComponentsCost += hotel.pricePerNight * hotel.numberOfRooms * tripDuration;
+      });
+    }
+
+    if (preferences.selectedEvent && preferences.selectedTicket) {
+      selectedComponentsInfo += '\n\nSELECTED EVENT (ALREADY BOOKED):\n';
+      selectedComponentsInfo += `- Event: ${preferences.selectedEvent.name}\n`;
+      selectedComponentsInfo += `- Date: ${preferences.selectedEvent.dateOfEvent}\n`;
+      selectedComponentsInfo += `- Venue: ${preferences.selectedEvent.venue.name}, ${preferences.selectedEvent.venue.city}\n`;
+      selectedComponentsInfo += `- Ticket Type: ${preferences.selectedTicket.categoryName}\n`;
+      selectedComponentsInfo += `- Price: ${preferences.selectedTicket.price} ${preferences.selectedTicket.currency}\n`;
+      selectedComponentsCost += preferences.selectedTicket.price * preferences.numberOfTravelers;
+    }
+
+    // Calculate remaining budget for other activities
+    const remainingBudget = preferences.budget.max - selectedComponentsCost;
+    const remainingBudgetPerDay = remainingBudget / duration;
+
     let eventInstructions = '';
     if (isEventTrip) {
       eventInstructions = `
@@ -345,7 +434,9 @@ CLIENT INFORMATION:
 - Dates: ${preferences.startDate} to ${preferences.endDate} (${duration} days)
 - Number of Travelers: ${preferences.numberOfTravelers}
 - Total Budget: ${preferences.budget.min}-${preferences.budget.max} ${preferences.budget.currency}
-- Budget per Day: ~${budgetPerDay.toFixed(0)} ${preferences.budget.currency}
+${selectedComponentsCost > 0 ? `- Selected Components Cost: ${selectedComponentsCost} ${preferences.budget.currency}` : ''}
+${selectedComponentsCost > 0 ? `- Remaining Budget for Activities: ${remainingBudget} ${preferences.budget.currency}` : ''}
+${selectedComponentsCost > 0 ? `- Budget per Day (Remaining): ~${remainingBudgetPerDay.toFixed(0)} ${preferences.budget.currency}` : `- Budget per Day: ~${budgetPerDay.toFixed(0)} ${preferences.budget.currency}`}
 - Budget per Person: ~${budgetPerPerson.toFixed(0)} ${preferences.budget.currency}
 
 PREFERENCES:
@@ -354,22 +445,30 @@ PREFERENCES:
 - Interests: ${preferences.preferences.interests.join(', ')}
 - Accommodation Types: ${preferences.preferences.accommodationType.join(', ')}
 - Dining Preferences: ${preferences.preferences.diningPreferences.join(', ')}
-${preferences.specialRequests ? `- Special Requests: ${preferences.specialRequests}` : ''}${eventInstructions}
+${preferences.specialRequests ? `- Special Requests: ${preferences.specialRequests}` : ''}${selectedComponentsInfo}${eventInstructions}
 
 INSTRUCTIONS:
 1. Create a detailed daily itinerary with specific times, locations, and activities
-2. Include realistic pricing for all components (accommodation, transport, activities, dining)
-3. Recommend specific luxury hotels/resorts with nightly rates
-4. Include transport costs between destinations
-5. Suggest premium activities and experiences with pricing
-6. Recommend fine dining establishments with price ranges
+2. Focus on creating engaging activities and experiences - pricing will be calculated separately from selected components
+3. ${preferences.selectedHotels && preferences.selectedHotels.length > 0 ? 'Use the selected hotels that are already booked - do not recommend different hotels' : 'Recommend specific luxury hotels/resorts (pricing will be calculated separately)'}
+4. ${preferences.selectedFlights && preferences.selectedFlights.length > 0 ? 'Use the selected flights that are already booked - do not recommend different flights' : 'Include transport recommendations (pricing will be calculated separately)'}
+5. Suggest premium activities and experiences (do not include pricing)
+6. Recommend fine dining establishments (do not include pricing)
 7. Consider the tone and interests when selecting activities
-8. Ensure the total cost stays within budget
+8. Focus on creating a compelling itinerary that matches the traveler's preferences
 9. Include insider tips and luxury touches
 10. Add special experiences that match the traveler's preferences${isEventTrip ? `
 11. Make the specified event the absolute centerpiece of the itinerary
 12. Schedule all activities around the event timing
 13. Include event-specific logistics and recommendations` : ''}
+${preferences.selectedFlights && preferences.selectedFlights.length > 0 ? `
+14. Incorporate the selected flights into the itinerary with proper timing
+15. Plan airport transfers and connections based on the selected flight times` : ''}
+${preferences.selectedHotels && preferences.selectedHotels.length > 0 ? `
+16. Use the selected hotels as the base for all daily activities
+17. Plan activities around the selected hotel locations` : ''}
+
+IMPORTANT: Do not include any pricing information in the response. Focus only on creating the itinerary, activities, and recommendations. Pricing will be calculated separately from the selected components.
 
 Respond with ONLY a JSON object in this exact format, with no additional text or formatting:
 {
@@ -468,6 +567,54 @@ Respond with ONLY a JSON object in this exact format, with no additional text or
     const budgetPerDay = preferences.budget.max / duration;
     const budgetPerPerson = preferences.budget.max / preferences.numberOfTravelers;
 
+    // Build selected components information
+    let selectedComponentsInfo = '';
+    let selectedComponentsCost = 0;
+    
+    if (preferences.selectedFlights && preferences.selectedFlights.length > 0) {
+      selectedComponentsInfo += '\n\nSELECTED FLIGHTS (ALREADY BOOKED):\n';
+      preferences.selectedFlights.forEach((flight, index) => {
+        selectedComponentsInfo += `${index + 1}. ${flight.originAirport} → ${flight.destinationAirport}\n`;
+        selectedComponentsInfo += `   - Class: ${flight.cabinClass}\n`;
+        if (flight.airline) selectedComponentsInfo += `   - Airline: ${flight.airline}\n`;
+        if (flight.flightNumber) selectedComponentsInfo += `   - Flight: ${flight.flightNumber}\n`;
+        if (flight.departureTime) selectedComponentsInfo += `   - Departure: ${flight.departureTime}\n`;
+        if (flight.arrivalTime) selectedComponentsInfo += `   - Arrival: ${flight.arrivalTime}\n`;
+        selectedComponentsInfo += `   - Price: ${flight.total} ${flight.currency}\n`;
+        selectedComponentsCost += flight.total;
+      });
+    }
+
+    if (preferences.selectedHotels && preferences.selectedHotels.length > 0) {
+      selectedComponentsInfo += '\n\nSELECTED HOTELS (ALREADY BOOKED):\n';
+      preferences.selectedHotels.forEach((hotel, index) => {
+        selectedComponentsInfo += `${index + 1}. ${hotel.hotelName}\n`;
+        selectedComponentsInfo += `   - Location: ${hotel.destinationCity}\n`;
+        selectedComponentsInfo += `   - Rooms: ${hotel.numberOfRooms}\n`;
+        selectedComponentsInfo += `   - Room Types: ${hotel.roomTypes.join(', ')}\n`;
+        if (hotel.starRating) selectedComponentsInfo += `   - Rating: ${hotel.starRating}★\n`;
+        selectedComponentsInfo += `   - Price per Night: ${hotel.pricePerNight} ${hotel.currency}\n`;
+        if (hotel.checkIn) selectedComponentsInfo += `   - Check-in: ${hotel.checkIn}\n`;
+        if (hotel.checkOut) selectedComponentsInfo += `   - Check-out: ${hotel.checkOut}\n`;
+        // Calculate total hotel cost for the trip duration
+        selectedComponentsCost += hotel.pricePerNight * hotel.numberOfRooms * duration;
+      });
+    }
+
+    if (preferences.selectedEvent && preferences.selectedTicket) {
+      selectedComponentsInfo += '\n\nSELECTED EVENT (ALREADY BOOKED):\n';
+      selectedComponentsInfo += `- Event: ${preferences.selectedEvent.name}\n`;
+      selectedComponentsInfo += `- Date: ${preferences.selectedEvent.dateOfEvent}\n`;
+      selectedComponentsInfo += `- Venue: ${preferences.selectedEvent.venue.name}, ${preferences.selectedEvent.venue.city}\n`;
+      selectedComponentsInfo += `- Ticket Type: ${preferences.selectedTicket.categoryName}\n`;
+      selectedComponentsInfo += `- Price: ${preferences.selectedTicket.price} ${preferences.selectedTicket.currency}\n`;
+      selectedComponentsCost += preferences.selectedTicket.price * preferences.numberOfTravelers;
+    }
+
+    // Calculate remaining budget for other activities
+    const remainingBudget = preferences.budget.max - selectedComponentsCost;
+    const remainingBudgetPerDay = remainingBudget / duration;
+
     return `You are a luxury travel quote generation assistant. Create a professional, detailed quote for a luxury travel experience.
 
 IMPORTANT:
@@ -480,7 +627,11 @@ CLIENT INFORMATION:
 - Destination: ${preferences.destination}
 - Dates: ${preferences.startDate} to ${preferences.endDate} (${duration} days)
 - Number of Travelers: ${preferences.numberOfTravelers}
-- Budget Range: ${preferences.budget.min}-${preferences.budget.max} ${preferences.budget.currency}
+- Total Budget: ${preferences.budget.min}-${preferences.budget.max} ${preferences.budget.currency}
+${selectedComponentsCost > 0 ? `- Selected Components Cost: ${selectedComponentsCost} ${preferences.budget.currency}` : ''}
+${selectedComponentsCost > 0 ? `- Remaining Budget for Activities: ${remainingBudget} ${preferences.budget.currency}` : ''}
+${selectedComponentsCost > 0 ? `- Budget per Day (Remaining): ~${remainingBudgetPerDay.toFixed(0)} ${preferences.budget.currency}` : `- Budget per Day: ~${budgetPerDay.toFixed(0)} ${preferences.budget.currency}`}
+- Budget per Person: ~${budgetPerPerson.toFixed(0)} ${preferences.budget.currency}
 - Travel Type: ${preferences.travelType || 'Luxury'}
 - From: ${preferences.fromLocation || 'Not specified'}
 
@@ -490,19 +641,23 @@ PREFERENCES:
 - Interests: ${preferences.preferences.interests.join(', ')}
 - Accommodation Types: ${preferences.preferences.accommodationType.join(', ')}
 - Dining Preferences: ${preferences.preferences.diningPreferences.join(', ')}
-${preferences.specialRequests ? `- Special Requests: ${preferences.specialRequests}` : ''}
+${preferences.specialRequests ? `- Special Requests: ${preferences.specialRequests}` : ''}${selectedComponentsInfo}
 
 QUOTE REQUIREMENTS:
 1. Create a compelling title that reflects the luxury nature of the trip
 2. Provide a detailed summary highlighting the unique aspects
-3. Include comprehensive pricing breakdown
-4. Recommend premium accommodations with specific properties
-5. Include luxury transportation options
-6. Suggest exclusive activities and experiences
-7. Recommend fine dining establishments
+3. Focus on creating engaging content - pricing will be calculated separately from selected components
+4. ${preferences.selectedHotels && preferences.selectedHotels.length > 0 ? 'Use the selected hotels that are already booked - do not recommend different hotels' : 'Recommend premium accommodations (pricing will be calculated separately)'}
+5. ${preferences.selectedFlights && preferences.selectedFlights.length > 0 ? 'Use the selected flights that are already booked - do not recommend different flights' : 'Include luxury transportation recommendations (pricing will be calculated separately)'}
+6. Suggest exclusive activities and experiences (do not include pricing)
+7. Recommend fine dining establishments (do not include pricing)
 8. Add luxury highlights that make this trip special
 9. Include professional travel tips
 10. Ensure the quote feels premium and exclusive
+11. Focus on creating compelling content that showcases the luxury experience
+12. ${preferences.selectedEvent ? 'Make the selected event the centerpiece of the quote' : ''}
+
+IMPORTANT: Do not include any pricing information in the response. Focus only on creating compelling content, recommendations, and highlights. Pricing will be calculated separately from the selected components.
 
 Respond with ONLY a JSON object in this exact format, with no additional text or formatting:
 {

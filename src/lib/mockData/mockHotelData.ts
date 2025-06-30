@@ -69,234 +69,7 @@ export interface MockHotelRoom {
   }[];
 }
 
-// Mock hotel data for Abu Dhabi
-export const mockHotels: MockHotel[] = [
-  {
-    id: 'hotel_1',
-    name: 'Emirates Palace Mandarin Oriental',
-    brand: 'Mandarin Oriental',
-    rating: 4.9,
-    stars: 5,
-    location: {
-      city: 'Abu Dhabi',
-      country: 'United Arab Emirates',
-      address: 'West Corniche Road, Abu Dhabi',
-      coordinates: {
-        latitude: 24.4539,
-        longitude: 54.3773
-      },
-      area: 'West Corniche',
-      distanceFromAirport: '45 minutes',
-      distanceFromCityCenter: '10 minutes'
-    },
-    description: 'Iconic luxury hotel featuring opulent Arabian architecture, private beach access, and world-class dining.',
-    amenities: [
-      'Private Beach',
-      'Spa & Wellness Center',
-      'Multiple Swimming Pools',
-      'Fine Dining Restaurants',
-      '24/7 Room Service',
-      'Concierge Service',
-      'Fitness Center',
-      'Business Center',
-      'Valet Parking',
-      'Free WiFi'
-    ],
-    images: [
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
-      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800',
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800'
-    ],
-    rooms: [
-      {
-        id: 'room_1_1',
-        name: 'Palace Deluxe Room',
-        type: 'deluxe',
-        description: 'Spacious room with city or sea views, featuring elegant Arabian décor and modern amenities.',
-        size: '55 sqm',
-        maxOccupancy: 3,
-        bedConfiguration: '1 King Bed or 2 Twin Beds',
-        amenities: [
-          'Marble Bathroom',
-          'Balcony',
-          'City or Sea View',
-          'Mini Bar',
-          'Coffee Maker',
-          'In-room Safe',
-          'Flat-screen TV',
-          'Free WiFi'
-        ],
-        images: [
-          'https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=600',
-          'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=600'
-        ],
-        price: {
-          amount: 850,
-          currency: 'GBP',
-          perNight: true,
-          originalAmount: 950
-        },
-        available: true,
-        cancellationPolicy: 'Free cancellation up to 24 hours before arrival',
-        includes: [
-          'Daily Housekeeping',
-          'Welcome Drink',
-          'Access to Spa Facilities',
-          'Beach Access'
-        ],
-        extras: [
-          {
-            name: 'Airport Transfer',
-            price: 120,
-            currency: 'GBP'
-          },
-          {
-            name: 'Breakfast Buffet',
-            price: 45,
-            currency: 'GBP'
-          }
-        ]
-      }
-    ],
-    policies: {
-      checkIn: '3:00 PM',
-      checkOut: '12:00 PM',
-      cancellationPolicy: 'Free cancellation up to 24 hours before arrival',
-      petPolicy: 'Pets allowed with prior arrangement',
-      smokingPolicy: 'Designated smoking areas only'
-    },
-    reviews: {
-      average: 4.9,
-      total: 567,
-      breakdown: {
-        cleanliness: 4.9,
-        service: 4.9,
-        location: 4.8,
-        value: 4.7
-      }
-    },
-    available: true
-  },
-  {
-    id: 'hotel_2',
-    name: 'St. Regis Abu Dhabi',
-    brand: 'St. Regis',
-    rating: 4.8,
-    stars: 5,
-    location: {
-      city: 'Abu Dhabi',
-      country: 'United Arab Emirates',
-      address: 'Nation Towers, Corniche, Abu Dhabi',
-      coordinates: {
-        latitude: 24.4539,
-        longitude: 54.3773
-      },
-      area: 'Corniche',
-      distanceFromAirport: '40 minutes',
-      distanceFromCityCenter: '5 minutes'
-    },
-    description: 'Luxury hotel in the iconic Nation Towers with stunning views of the Arabian Gulf and city skyline.',
-    amenities: [
-      'Infinity Pool',
-      'Spa & Wellness Center',
-      'Multiple Restaurants',
-      'Butler Service',
-      'Fitness Center',
-      'Business Center',
-      'Valet Parking',
-      'Free WiFi',
-      'Concierge Service'
-    ],
-    images: [
-      'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800',
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800'
-    ],
-    rooms: [
-      {
-        id: 'room_2_1',
-        name: 'St. Regis Suite',
-        type: 'suite',
-        description: 'Luxurious suite with separate living area, stunning views, and personalized butler service.',
-        size: '75 sqm',
-        maxOccupancy: 4,
-        bedConfiguration: '1 King Bed + Living Room',
-        amenities: [
-          'Separate Living Room',
-          'Marble Bathroom',
-          'Gulf View',
-          'Butler Service',
-          'Mini Bar',
-          'Coffee Maker',
-          'In-room Safe',
-          'Flat-screen TV',
-          'Free WiFi'
-        ],
-        images: [
-          'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600'
-        ],
-        price: {
-          amount: 1200,
-          currency: 'GBP',
-          perNight: true
-        },
-        available: true,
-        cancellationPolicy: 'Free cancellation up to 24 hours before arrival',
-        includes: [
-          'Daily Housekeeping',
-          'Butler Service',
-          'Welcome Amenities',
-          'Access to Spa Facilities'
-        ],
-        extras: [
-          {
-            name: 'Airport Transfer',
-            price: 100,
-            currency: 'GBP'
-          },
-          {
-            name: 'Breakfast Buffet',
-            price: 50,
-            currency: 'GBP'
-          }
-        ]
-      }
-    ],
-    policies: {
-      checkIn: '3:00 PM',
-      checkOut: '12:00 PM',
-      cancellationPolicy: 'Free cancellation up to 24 hours before arrival',
-      petPolicy: 'Pets allowed with prior arrangement',
-      smokingPolicy: 'Designated smoking areas only'
-    },
-    reviews: {
-      average: 4.8,
-      total: 423,
-      breakdown: {
-        cleanliness: 4.8,
-        service: 4.9,
-        location: 4.8,
-        value: 4.7
-      }
-    },
-    available: true
-  }
-];
-
-export const getMockHotels = (city?: string, stars?: number): MockHotel[] => {
-  let filteredHotels = mockHotels;
-
-  if (city) {
-    filteredHotels = filteredHotels.filter(hotel => 
-      hotel.location.city.toLowerCase().includes(city.toLowerCase())
-    );
-  }
-
-  if (stars) {
-    filteredHotels = filteredHotels.filter(hotel => hotel.stars >= stars);
-  }
-
-  return filteredHotels;
-};
+// RateHawk-style hotel mock data
 
 export interface RateHawkHotelRate {
   match_hash: string;
@@ -405,6 +178,240 @@ export interface RateHawkHotel {
   rates: RateHawkHotelRate[];
   bar_price_data: any;
 }
+
+export const mockHotels: RateHawkHotel[] = [
+  {
+    id: "rila_muam_castle_hotel",
+    hid: 9025546,
+    rates: [
+      {
+        match_hash: "m-e5bd52dd-670c-5fb8-9be0-dc7e1d36be12",
+        search_hash: "sr-0193a945-92bb-7190-8455-28cc350f6e9f",
+        daily_prices: ["24.00", "24.00", "24.00"],
+        meal: "nomeal",
+        meal_data: {
+          value: "nomeal",
+          has_breakfast: false,
+          no_child_meal: true
+        },
+        payment_options: {
+          payment_types: [
+            {
+              amount: "76.20",
+              show_amount: "72.00",
+              currency_code: "EUR",
+              show_currency_code: "EUR",
+              by: null,
+              is_need_credit_card_data: false,
+              is_need_cvc: false,
+              type: "deposit",
+              vat_data: {
+                included: false,
+                applied: false,
+                amount: "0.00",
+                currency_code: "USD",
+                value: "0.00"
+              },
+              tax_data: {},
+              perks: {},
+              commission_info: {
+                show: {
+                  amount_gross: "90.00",
+                  amount_net: "72.00",
+                  amount_commission: "18.00"
+                },
+                charge: {
+                  amount_gross: "9514.00",
+                  amount_net: "7611.20",
+                  amount_commission: "1902.80"
+                }
+              },
+              cancellation_penalties: {
+                policies: [
+                  {
+                    start_at: null,
+                    end_at: "2025-10-19T18:30:00",
+                    amount_charge: "0.00",
+                    amount_show: "0.00",
+                    commission_info: {
+                      show: {
+                        amount_gross: "0.00",
+                        amount_net: "0.00",
+                        amount_commission: "0.00"
+                      },
+                      charge: {
+                        amount_gross: "0.00",
+                        amount_net: "0.00",
+                        amount_commission: "0.00"
+                      }
+                    }
+                  }
+                ],
+                free_cancellation_before: "2025-10-19T18:30:00"
+              },
+              recommended_price: null
+            }
+          ]
+        },
+        bar_rate_price_data: null,
+        rg_ext: {
+          class: 3,
+          quality: 2,
+          sex: 0,
+          bathroom: 2,
+          bedding: 3,
+          family: 0,
+          capacity: 2,
+          club: 0,
+          bedrooms: 0,
+          balcony: 0,
+          view: 0,
+          floor: 0
+        },
+        legal_info: null,
+        room_name: "Standard Double room (full double bed)",
+        room_name_info: {
+          original_rate_name: "Basic Room 1 Double Bed Non Smoking 1 Double Bed"
+        },
+        serp_filters: ["has_bathroom"],
+        sell_price_limits: null,
+        allotment: 1,
+        amenities_data: ["non-smoking"],
+        any_residency: false,
+        deposit: null,
+        no_show: null,
+        room_data_trans: {
+          main_room_type: "Standard Double room",
+          main_name: "Standard Double room",
+          bathroom: null,
+          bedding_type: "full double bed",
+          misc_room_type: null
+        }
+      },
+      {
+        match_hash: "m-0afed42a-c8b9-5287-811b-fa29f24813ad",
+        search_hash: "sr-0193a945-92bb-7191-917f-b591fa84d38e",
+        daily_prices: ["24.27", "24.27", "24.27"],
+        meal: "nomeal",
+        meal_data: {
+          value: "nomeal",
+          has_breakfast: false,
+          no_child_meal: true
+        },
+        payment_options: {
+          payment_types: [
+            {
+              amount: "77.20",
+              show_amount: "72.80",
+              currency_code: "EUR",
+              show_currency_code: "EUR",
+              by: null,
+              is_need_credit_card_data: false,
+              is_need_cvc: false,
+              type: "deposit",
+              vat_data: {
+                included: false,
+                applied: false,
+                amount: "0.00",
+                currency_code: "USD",
+                value: "0.00"
+              },
+              tax_data: {},
+              perks: {},
+              commission_info: {
+                show: {
+                  amount_gross: "91.00",
+                  amount_net: "72.80",
+                  amount_commission: "18.20"
+                },
+                charge: {
+                  amount_gross: "9629.00",
+                  amount_net: "7703.20",
+                  amount_commission: "1925.80"
+                }
+              },
+              cancellation_penalties: {
+                policies: [
+                  {
+                    start_at: null,
+                    end_at: "2025-10-20T23:00:00",
+                    amount_charge: "0.00",
+                    amount_show: "0.00",
+                    commission_info: {
+                      show: {
+                        amount_gross: "0.00",
+                        amount_net: "0.00",
+                        amount_commission: "0.00"
+                      },
+                      charge: {
+                        amount_gross: "0.00",
+                        amount_net: "0.00",
+                        amount_commission: "0.00"
+                      }
+                    }
+                  }
+                ],
+                free_cancellation_before: "2025-10-20T23:00:00"
+              },
+              recommended_price: null
+            }
+          ]
+        },
+        bar_rate_price_data: null,
+        rg_ext: {
+          class: 3,
+          quality: 2,
+          sex: 0,
+          bathroom: 2,
+          bedding: 3,
+          family: 0,
+          capacity: 2,
+          club: 0,
+          bedrooms: 0,
+          balcony: 0,
+          view: 0,
+          floor: 0
+        },
+        legal_info: null,
+        room_name: "Standard Double room (full double bed)",
+        room_name_info: {
+          original_rate_name: "Basic Room, 1 Double Bed, Non Smoking 1 Double Bed"
+        },
+        serp_filters: ["has_bathroom"],
+        sell_price_limits: null,
+        allotment: 1,
+        amenities_data: ["non-smoking"],
+        any_residency: false,
+        deposit: null,
+        no_show: null,
+        room_data_trans: {
+          main_room_type: "Standard Double room",
+          main_name: "Standard Double room",
+          bathroom: null,
+          bedding_type: "full double bed",
+          misc_room_type: null
+        }
+      }
+    ],
+    bar_price_data: null
+  }
+];
+
+export const getMockHotels = (city?: string, stars?: number): MockHotel[] => {
+  let filteredHotels = mockHotels;
+
+  if (city) {
+    filteredHotels = filteredHotels.filter(hotel => 
+      hotel.location.city.toLowerCase().includes(city.toLowerCase())
+    );
+  }
+
+  if (stars) {
+    filteredHotels = filteredHotels.filter(hotel => hotel.stars >= stars);
+  }
+
+  return filteredHotels;
+};
 
 export interface RateHawkHotelResponse {
   data: {
@@ -563,7 +570,7 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
           {
             match_hash: "m-0afed42a-c8b9-5287-811b-fa29f24813ad",
             search_hash: "sr-0193a945-92bb-7191-917f-b591fa84d38e",
-            daily_prices: ["27.20", "27.20", "27.20"],
+            daily_prices: ["24.27", "24.27", "24.27"],
             meal: "nomeal",
             meal_data: {
               value: "nomeal",
@@ -573,8 +580,8 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
             payment_options: {
               payment_types: [
                 {
-                  amount: "86.80",
-                  show_amount: "81.60",
+                  amount: "77.20",
+                  show_amount: "72.80",
                   currency_code: "EUR",
                   show_currency_code: "EUR",
                   by: null,
@@ -592,14 +599,14 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
                   perks: {},
                   commission_info: {
                     show: {
-                      amount_gross: "102.00",
-                      amount_net: "81.60",
-                      amount_commission: "20.40"
+                      amount_gross: "91.00",
+                      amount_net: "72.80",
+                      amount_commission: "18.20"
                     },
                     charge: {
-                      amount_gross: "10761.00",
-                      amount_net: "8608.80",
-                      amount_commission: "2152.20"
+                      amount_gross: "9629.00",
+                      amount_net: "7703.20",
+                      amount_commission: "1925.80"
                     }
                   },
                   cancellation_penalties: {
@@ -621,24 +628,6 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
                             amount_commission: "0.00"
                           }
                         }
-                      },
-                      {
-                        start_at: "2025-10-20T23:00:00",
-                        end_at: null,
-                        amount_charge: "8608.80",
-                        amount_show: "81.60",
-                        commission_info: {
-                          show: {
-                            amount_gross: "102.00",
-                            amount_net: "81.60",
-                            amount_commission: "20.40"
-                          },
-                          charge: {
-                            amount_gross: "10761.00",
-                            amount_net: "8608.80",
-                            amount_commission: "2152.20"
-                          }
-                        }
                       }
                     ],
                     free_cancellation_before: "2025-10-20T23:00:00"
@@ -650,7 +639,7 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
             bar_rate_price_data: null,
             rg_ext: {
               class: 3,
-              quality: 18,
+              quality: 2,
               sex: 0,
               bathroom: 2,
               bedding: 3,
@@ -663,9 +652,9 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
               floor: 0
             },
             legal_info: null,
-            room_name: "Classic Double room (full double bed)",
+            room_name: "Standard Double room (full double bed)",
             room_name_info: {
-              original_rate_name: "Classic Room, 1 Double Bed, Non Smoking 1 Double Bed"
+              original_rate_name: "Basic Room, 1 Double Bed, Non Smoking 1 Double Bed"
             },
             serp_filters: ["has_bathroom"],
             sell_price_limits: null,
@@ -675,8 +664,8 @@ export const mockRateHawkHotels: RateHawkHotelResponse = {
             deposit: null,
             no_show: null,
             room_data_trans: {
-              main_room_type: "Classic Double room",
-              main_name: "Classic Double room",
+              main_room_type: "Standard Double room",
+              main_name: "Standard Double room",
               bathroom: null,
               bedding_type: "full double bed",
               misc_room_type: null

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { gemini, type TripPreferences } from './gemini';
 import { QuoteInput } from '@/utils/createQuotePayload';
 import { CRMService } from './crmService';
+import { getGeminiService } from './gemini';
 
 export interface QuoteResponse {
   id: string;
@@ -41,6 +42,28 @@ export interface QuoteResponse {
     currency: string;
     available: boolean;
   };
+  selectedFlights?: Array<{
+    originAirport: string;
+    destinationAirport: string;
+    cabinClass: string;
+    airline?: string;
+    flightNumber?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    total: number;
+    currency: string;
+  }>;
+  selectedHotels?: Array<{
+    hotelName: string;
+    destinationCity: string;
+    numberOfRooms: number;
+    roomTypes: string[];
+    starRating?: number;
+    pricePerNight: number;
+    currency: string;
+    checkIn?: string;
+    checkOut?: string;
+  }>;
 }
 
 export interface QuoteError {
@@ -59,52 +82,184 @@ export class QuoteService {
         throw new Error('User not authenticated');
       }
 
-      // Handle client creation/linking
-      let clientId = quoteData.clientId;
-      
-      if (!clientId && quoteData.tripDetails.clientName) {
-        // Try to find existing client by name and email
-        const clients = await CRMService.searchClients(quoteData.tripDetails.clientName);
-        const existingClient = clients.find(client => 
-          client.email === quoteData.tripDetails.clientEmail ||
-          `${client.firstName} ${client.lastName}` === quoteData.tripDetails.clientName
-        );
+      // Extract client ID if provided
+      const clientId = quoteData.tripDetails.clientId;
 
-        if (existingClient) {
-          clientId = existingClient.id;
-        } else {
-          // Create new client from quote data
-          const [firstName, ...lastNameParts] = quoteData.tripDetails.clientName.split(' ');
-          const lastName = lastNameParts.join(' ');
-          
-          const newClient = await CRMService.createClient({
-            firstName,
-            lastName,
-            email: quoteData.tripDetails.clientEmail,
-            phone: quoteData.tripDetails.clientPhone,
-            address: quoteData.tripDetails.clientAddress,
-            status: 'active',
-            source: 'quote_creation',
-          });
-          
-          clientId = newClient.id;
+      // Calculate budget breakdown from selected components
+      const formDataForCalculation = {
+        travelerInfo: {
+          startDate: quoteData.tripDetails.startDate,
+          endDate: quoteData.tripDetails.endDate,
+          travelers: {
+            adults: typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+              ? quoteData.tripDetails.numberOfTravelers 
+              : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1,
+            children: typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+              ? 0 
+              : (quoteData.tripDetails.numberOfTravelers as any)?.children || 0
+          }
+        },
+        flights: quoteData.selectedFlights ? {
+          enabled: true,
+          groups: quoteData.selectedFlights.map(flight => ({
+            selectedFlight: {
+              convertedTotal: flight.total,
+              convertedCurrency: flight.currency,
+              airline: flight.airline,
+              flightNumber: flight.flightNumber,
+              departureTime: flight.departureTime,
+              arrivalTime: flight.arrivalTime
+            },
+            originAirport: flight.originAirport,
+            destinationAirport: flight.destinationAirport,
+            cabinClass: flight.cabinClass
+          }))
+        } : undefined,
+        hotels: quoteData.selectedHotels ? {
+          enabled: true,
+          groups: quoteData.selectedHotels.map(hotel => ({
+            selectedHotel: {
+              convertedPricePerNight: hotel.pricePerNight,
+              convertedCurrency: hotel.currency,
+              hotelName: hotel.hotelName,
+              destinationCity: hotel.destinationCity,
+              destinationCountry: hotel.destinationCity.split(', ').pop() || '',
+              starRating: hotel.starRating,
+              amenities: []
+            },
+            numberOfRooms: hotel.numberOfRooms,
+            roomTypes: hotel.roomTypes
+          }))
+        } : undefined,
+        events: quoteData.selectedEvent && quoteData.selectedTicket ? {
+          enabled: true,
+          events: [{
+            groups: [{
+              selectedTicket: {
+                convertedPrice: quoteData.selectedTicket.price,
+                convertedCurrency: quoteData.selectedTicket.currency
+              }
+            }]
+          }]
+        } : undefined
+      } as any;
+
+      // Use the already-calculated prices from the form instead of recalculating
+      const breakdown = {
+        accommodation: {
+          total: 0,
+          perNight: 0,
+          hotelRecommendations: [] as any[]
+        },
+        transportation: {
+          total: 0,
+          breakdown: [] as any[]
+        },
+        activities: {
+          total: 0,
+          breakdown: [] as any[]
+        },
+        dining: {
+          total: 0,
+          perDay: 0,
+          recommendations: [] as any[]
+        },
+        miscellaneous: {
+          total: 0,
+          description: 'Contingency and tips.'
         }
+      };
+
+      // Calculate accommodation costs from selected hotels
+      if (quoteData.selectedHotels) {
+        const tripDuration = Math.ceil((new Date(quoteData.tripDetails.endDate).getTime() - new Date(quoteData.tripDetails.startDate).getTime()) / (1000 * 60 * 60 * 24));
+        
+        quoteData.selectedHotels.forEach(hotel => {
+          const hotelTotal = hotel.pricePerNight * hotel.numberOfRooms * tripDuration;
+          breakdown.accommodation.total += hotelTotal;
+          breakdown.accommodation.perNight += hotel.pricePerNight;
+          
+          breakdown.accommodation.hotelRecommendations.push({
+            name: hotel.hotelName,
+            location: hotel.destinationCity,
+            pricePerNight: hotel.pricePerNight,
+            rating: `${hotel.starRating}★`,
+            amenities: []
+          });
+        });
       }
 
-      // Calculate base costs
-      const baseCost = await this.calculateBaseCosts(quoteData);
-      
-      // Apply margin
-      const margin = quoteData.agentContext?.marginOverride || 0.15; // Default 15% margin
-      const totalPrice = baseCost * (1 + margin);
+      // Calculate transportation costs from selected flights
+      if (quoteData.selectedFlights) {
+        const totalTravelers = typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+          ? quoteData.tripDetails.numberOfTravelers 
+          : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1;
+        
+        quoteData.selectedFlights.forEach(flight => {
+          const flightTotal = flight.total * totalTravelers;
+          breakdown.transportation.total += flightTotal;
+          breakdown.transportation.breakdown.push({
+            type: 'Flight',
+            description: `${flight.originAirport} to ${flight.destinationAirport} (${flight.airline}, ${flight.flightNumber})`,
+            cost: flightTotal
+          });
+        });
+      }
 
-      // Generate AI itinerary using the real Gemini service
-      const tripPreferences: TripPreferences = {
+      // Calculate activities costs from selected events
+      if (quoteData.selectedEvent && quoteData.selectedTicket) {
+        const totalTravelers = typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+          ? quoteData.tripDetails.numberOfTravelers 
+          : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1;
+        
+        const eventTotal = quoteData.selectedTicket.price * totalTravelers;
+        breakdown.activities.total += eventTotal;
+        breakdown.activities.breakdown.push({
+          name: quoteData.selectedEvent.name,
+          cost: eventTotal,
+          type: 'Event Ticket'
+        });
+      }
+
+      // Calculate dining costs (estimated)
+      const tripDuration = Math.ceil((new Date(quoteData.tripDetails.endDate).getTime() - new Date(quoteData.tripDetails.startDate).getTime()) / (1000 * 60 * 60 * 24));
+      const totalTravelers = typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+        ? quoteData.tripDetails.numberOfTravelers 
+        : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1;
+      const dailyDiningBudget = 100; // £100 per day per person
+      breakdown.dining.total = dailyDiningBudget * tripDuration * totalTravelers;
+      breakdown.dining.perDay = dailyDiningBudget * totalTravelers;
+
+      // Calculate total budget
+      const calculatedTotal = breakdown.accommodation.total + 
+                             breakdown.transportation.total + 
+                             breakdown.activities.total + 
+                             breakdown.dining.total + 
+                             breakdown.miscellaneous.total;
+      
+      console.log('💰 QuoteService - Calculated budget breakdown:', {
+        breakdown,
+        calculatedTotal,
+        selectedFlights: quoteData.selectedFlights,
+        selectedHotels: quoteData.selectedHotels,
+        selectedEvent: quoteData.selectedEvent,
+        selectedTicket: quoteData.selectedTicket
+      });
+
+      // Use calculated total instead of AI-generated pricing
+      const baseCost = calculatedTotal;
+      const margin = baseCost * 0.15; // 15% margin
+      const totalPrice = baseCost + margin;
+
+      // Create trip preferences for Gemini (without pricing)
+      const tripPreferences = {
         clientName: quoteData.tripDetails.clientName,
         destination: quoteData.tripDetails.destination,
         startDate: quoteData.tripDetails.startDate,
         endDate: quoteData.tripDetails.endDate,
-        numberOfTravelers: quoteData.tripDetails.numberOfTravelers,
+        numberOfTravelers: typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+          ? quoteData.tripDetails.numberOfTravelers 
+          : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1,
         budget: {
           min: quoteData.budget.amount * 0.8,
           max: quoteData.budget.amount,
@@ -118,14 +273,44 @@ export class QuoteService {
           diningPreferences: quoteData.preferences.diningPreferences,
         },
         specialRequests: quoteData.preferences.specialRequests,
-        transportType: 'plane', // Default, could be made configurable
-        fromLocation: 'Not specified', // Could be made configurable
-        travelType: 'solo', // Default, could be made configurable
+        transportType: quoteData.tripDetails.transportType,
+        fromLocation: quoteData.tripDetails.fromLocation,
+        travelType: quoteData.tripDetails.travelType,
+        selectedFlights: quoteData.selectedFlights,
+        selectedHotels: quoteData.selectedHotels,
+        selectedEvent: quoteData.selectedEvent,
+        selectedTicket: quoteData.selectedTicket,
       };
 
-      console.log('🎯 QuoteService - Generating itinerary with Gemini:', tripPreferences);
+      console.log('🎯 QuoteService - Generating itinerary with Gemini:', {
+        clientName: tripPreferences.clientName,
+        destination: tripPreferences.destination,
+        hasSelectedFlights: !!tripPreferences.selectedFlights,
+        selectedFlightsCount: tripPreferences.selectedFlights?.length || 0,
+        selectedFlightsData: tripPreferences.selectedFlights,
+        hasSelectedHotels: !!tripPreferences.selectedHotels,
+        selectedHotelsCount: tripPreferences.selectedHotels?.length || 0,
+        selectedHotelsData: tripPreferences.selectedHotels,
+        hasSelectedEvent: !!tripPreferences.selectedEvent,
+        hasSelectedTicket: !!tripPreferences.selectedTicket,
+        specialRequests: tripPreferences.specialRequests
+      });
+      
+      const gemini = getGeminiService();
       const generatedItinerary = await gemini.generateItinerary(tripPreferences);
-      console.log('✅ QuoteService - Itinerary generated successfully:', generatedItinerary);
+      
+      // Replace the AI-generated budget breakdown with our calculated one
+      generatedItinerary.budgetBreakdown = breakdown;
+      generatedItinerary.totalBudget = {
+        amount: calculatedTotal,
+        currency: quoteData.budget.currency
+      };
+      
+      console.log('✅ QuoteService - Itinerary generated successfully with calculated pricing:', {
+        generatedItinerary: generatedItinerary,
+        breakdown: breakdown,
+        calculatedTotal: calculatedTotal
+      });
 
       // Save to Supabase
       const { data: quote, error } = await supabase
@@ -141,8 +326,12 @@ export class QuoteService {
           start_date: quoteData.tripDetails.startDate,
           end_date: quoteData.tripDetails.endDate,
           travelers: { 
-            adults: quoteData.tripDetails.numberOfTravelers.adults || 1,
-            children: quoteData.tripDetails.numberOfTravelers.children || 0
+            adults: typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+              ? quoteData.tripDetails.numberOfTravelers 
+              : (quoteData.tripDetails.numberOfTravelers as any)?.adults || 1,
+            children: typeof quoteData.tripDetails.numberOfTravelers === 'number' 
+              ? 0 
+              : (quoteData.tripDetails.numberOfTravelers as any)?.children || 0
           },
           trip_details: quoteData.tripDetails,
           preferences: quoteData.preferences,
@@ -152,6 +341,8 @@ export class QuoteService {
           agent_context: quoteData.agentContext,
           selected_event: quoteData.selectedEvent,
           selected_ticket: quoteData.selectedTicket,
+          selected_flights: quoteData.selectedFlights,
+          selected_hotels: quoteData.selectedHotels,
           base_cost: baseCost,
           margin: margin,
           total_price: totalPrice,
@@ -194,6 +385,8 @@ export class QuoteService {
         clientName: quote.client_name,
         selectedEvent: quote.selected_event,
         selectedTicket: quote.selected_ticket,
+        selectedFlights: quote.selected_flights,
+        selectedHotels: quote.selected_hotels,
       };
 
     } catch (error) {
@@ -239,6 +432,8 @@ export class QuoteService {
         clientName: quote.client_name,
         selectedEvent: quote.selected_event,
         selectedTicket: quote.selected_ticket,
+        selectedFlights: quote.selected_flights,
+        selectedHotels: quote.selected_hotels,
       }));
 
     } catch (error) {
@@ -285,6 +480,8 @@ export class QuoteService {
         clientName: quote.client_name,
         selectedEvent: quote.selected_event,
         selectedTicket: quote.selected_ticket,
+        selectedFlights: quote.selected_flights,
+        selectedHotels: quote.selected_hotels,
       }));
 
     } catch (error) {
@@ -335,6 +532,8 @@ export class QuoteService {
         clientName: quote.client_name,
         selectedEvent: quote.selected_event,
         selectedTicket: quote.selected_ticket,
+        selectedFlights: quote.selected_flights,
+        selectedHotels: quote.selected_hotels,
       };
 
     } catch (error) {
@@ -493,9 +692,28 @@ export class QuoteService {
   // Private helper methods
 
   private static async calculateBaseCosts(quoteData: QuoteInput): Promise<number> {
-    // Mock calculation - replace with real API calls to inventory providers
     let baseCost = 0;
 
+    // If we have selected components with actual prices, use those
+    if (quoteData.packageComponents?.selectedItems?.length > 0) {
+      console.log('💰 Using selected component prices from intake form');
+      
+      // Use the budget amount which now contains the calculated total from selected components
+      baseCost = quoteData.budget.amount;
+      
+      console.log('📊 Base cost from selected components:', {
+        totalCost: baseCost,
+        currency: quoteData.budget.currency,
+        selectedItems: quoteData.packageComponents.selectedItems,
+        aiAnalysis: quoteData.packageComponents.aiAnalysis
+      });
+      
+      return baseCost;
+    }
+
+    // Fallback to mock calculation if no selected components
+    console.log('💰 Using fallback mock calculations');
+    
     // Base trip cost
     baseCost += quoteData.budget.amount * 0.7; // Assume 70% of budget is base cost
 
